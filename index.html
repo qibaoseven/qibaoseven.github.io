@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudentOS - 同步</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .app-container {
+            width: 500px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .sync-screen, .login-screen {
+            padding: 40px;
+            display: none;
+        }
+
+        .sync-screen.active, .login-screen.active {
+            display: block;
+        }
+
+        h1 {
+            font-size: 2em;
+            color: #4a5568;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #718096;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .status-box {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-family: monospace;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .status-item:last-child {
+            border-bottom: none;
+        }
+
+        .label {
+            color: #718096;
+        }
+
+        .value {
+            color: #4a5568;
+            font-weight: bold;
+        }
+
+        .value.updated-1 {
+            color: #f56565;
+        }
+
+        .value.updated-0 {
+            color: #48bb78;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .raw-json {
+            background: #1a202c;
+            color: #a0aec0;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow: auto;
+            margin: 20px 0;
+            white-space: pre-wrap;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin: 10px 0;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #edf2f7;
+            color: #4a5568;
+        }
+
+        .btn-secondary:hover {
+            background: #e2e8f0;
+        }
+
+        .user-select {
+            width: 100%;
+            padding: 15px;
+            margin: 20px 0;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 1.1em;
+        }
+
+        .password-input {
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 1.1em;
+        }
+
+        .folder-input {
+            display: none;
+        }
+
+        .folder-label {
+            display: block;
+            padding: 20px;
+            background: #f7fafc;
+            border: 2px dashed #cbd5e0;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            margin: 20px 0;
+        }
+
+        .folder-label:hover {
+            border-color: #667eea;
+            background: #edf2f7;
+        }
+
+        .file-list {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .file-item {
+            padding: 5px;
+            border-bottom: 1px solid #e2e8f0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .file-item.success {
+            color: #48bb78;
+        }
+
+        .file-item.error {
+            color: #f56565;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- 同步界面 -->
+        <div class="sync-screen active" id="syncScreen">
+            <h1>🎓 StudentOS</h1>
+            <div class="subtitle">正在连接云端...</div>
+            
+            <div class="status-box">
+                <div class="status-item">
+                    <span class="label">状态：</span>
+                    <span class="value" id="statusText">连接中...</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">HTTP状态：</span>
+                    <span class="value" id="httpStatus">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">updated值：</span>
+                    <span class="value" id="updatedValue">-</span>
+                </div>
+            </div>
+            
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            
+            <div class="raw-json" id="rawJson">
+                等待响应...
+            </div>
+            
+            <div id="actionArea"></div>
+        </div>
+
+        <!-- 登录界面 -->
+        <div class="login-screen" id="loginScreen">
+            <h1>🎓 StudentOS</h1>
+            <div class="subtitle">登录系统</div>
+            
+            <select class="user-select" id="userSelect">
+                <option value="">请选择账号...</option>
+            </select>
+            
+            <input type="password" class="password-input" id="password" placeholder="密码">
+            
+            <button class="btn btn-primary" onclick="handleLogin()">登录</button>
+        </div>
+    </div>
+
+    <script>
+        const CONFIG = {
+            binId: "6975bf17d0ea881f4083a3af",
+            masterKey: "$2a$10$jC76j4CEGgqz842YvvDucuoWG6emHsBbdqNr56rj8..53SEVCpp/u"
+        };
+
+        let cloudData = null;
+        let localUsers = {};
+        let folderFiles = {};
+
+        // ==================== 获取云端数据 ====================
+        async function fetchCloudData() {
+            const url = `https://api.jsonbin.io/v3/b/${CONFIG.binId}/latest`;
+            
+            try {
+                document.getElementById('statusText').innerHTML = '下载中...';
+                
+                const response = await fetch(url, {
+                    headers: { "X-Master-Key": CONFIG.masterKey }
+                });
+                
+                document.getElementById('httpStatus').innerHTML = response.status;
+                
+                const rawText = await response.text();
+                document.getElementById('rawJson').innerHTML = formatJson(rawText);
+                
+                // 解析数据
+                const parsed = JSON.parse(rawText);
+                
+                if (parsed.record) {
+                    cloudData = parsed.record;
+                    document.getElementById('updatedValue').innerHTML = 
+                        `<span class="value ${cloudData.updated === 1 ? 'updated-1' : 'updated-0'}">${cloudData.updated}</span>`;
+                } else {
+                    cloudData = parsed;
+                    document.getElementById('updatedValue').innerHTML = 
+                        `<span class="value ${cloudData.updated === 1 ? 'updated-1' : 'updated-0'}">${cloudData.updated}</span>`;
+                }
+                
+                document.getElementById('progressFill').style.width = '100%';
+                document.getElementById('statusText').innerHTML = '完成';
+                
+                // 根据updated值决定下一步
+                if (cloudData.updated === 1) {
+                    // updated=1: 直接用下载的数据登录
+                    showLoginWithCloudData();
+                } else {
+                    // updated=0: 需要选择文件夹
+                    showFolderSelect();
+                }
+                
+            } catch (error) {
+                document.getElementById('statusText').innerHTML = '错误';
+                document.getElementById('rawJson').innerHTML = `❌ ${error}`;
+            }
+        }
+
+        // ==================== 用云端数据登录 ====================
+        function showLoginWithCloudData() {
+            const actionArea = document.getElementById('actionArea');
+            
+            if (cloudData && cloudData.users) {
+                localUsers = cloudData.users;
+                
+                actionArea.innerHTML = `
+                    <div class="status-box" style="background: #f0fdf4;">
+                        <div class="status-item">
+                            <span class="label">✅ updated=1，使用云端数据</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">用户数：</span>
+                            <span class="value">${Object.keys(cloudData.users).length}</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="goToLogin()">进入登录界面</button>
+                `;
+            }
+        }
+
+        // ==================== 显示文件夹选择 ====================
+        function showFolderSelect() {
+            const actionArea = document.getElementById('actionArea');
+            
+            actionArea.innerHTML = `
+                <div class="status-box" style="background: #fef3c7;">
+                    <div class="status-item">
+                        <span class="label">⚠️ updated=0，需要选择文件夹</span>
+                    </div>
+                </div>
+                <input type="file" id="folderInput" class="folder-input" webkitdirectory directory multiple onchange="handleFolderSelect(event)">
+                <label for="folderInput" class="folder-label">
+                    📁 点击选择数据文件夹<br>
+                    <span style="font-size: 0.9em; color: #718096;">将自动读取所有JSON文件</span>
+                </label>
+                <div id="fileList" class="file-list" style="display: none;"></div>
+            `;
+        }
+
+        // ==================== 处理文件夹选择 ====================
+        async function handleFolderSelect(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+            
+            document.getElementById('fileList').style.display = 'block';
+            document.getElementById('fileList').innerHTML = '';
+            
+            document.getElementById('statusText').innerHTML = '读取文件中...';
+            document.getElementById('progressFill').style.width = '30%';
+            
+            const fileData = {};
+            let jsonCount = 0;
+            
+            // 文件映射
+            const fileMapping = {
+                'user.json': 'users',
+                'score.json': 'scores',
+                'gold_data.json': 'gold',
+                'rewards.json': 'rewards',
+                'punishment.json': 'punishments',
+                'usr_pun.json': 'userPunishments',
+                'log.json': 'logs',
+                'score_rules.json': 'rules',
+                'exchange_rate.json': 'exchangeRate',
+                'emoji.json': 'emoji'
+            };
+            
+            for (let file of files) {
+                const fileName = file.name;
+                
+                if (fileMapping[fileName]) {
+                    try {
+                        const text = await file.text();
+                        const data = JSON.parse(text);
+                        
+                        // 添加到文件列表显示
+                        document.getElementById('fileList').innerHTML += `
+                            <div class="file-item success">✅ ${fileName} - 已读取</div>
+                        `;
+                        
+                        // 根据文件名处理数据
+                        if (fileName === 'user.json') {
+                            fileData.users = data.users || data;
+                        } else if (fileName === 'score.json') {
+                            fileData.scores = data.studentDefaultScore || data;
+                            fileData.groups = data.studentGroups || {};
+                        } else {
+                            fileData[fileMapping[fileName]] = data;
+                        }
+                        
+                        jsonCount++;
+                        
+                    } catch (e) {
+                        document.getElementById('fileList').innerHTML += `
+                            <div class="file-item error">❌ ${fileName} - 读取失败</div>
+                        `;
+                    }
+                }
+            }
+            
+            document.getElementById('progressFill').style.width = '60%';
+            document.getElementById('statusText').innerHTML = `已读取 ${jsonCount} 个JSON文件`;
+            
+            if (jsonCount === 0) {
+                alert('文件夹中没有找到JSON文件');
+                return;
+            }
+            
+            // 添加 updated=1 标记
+            fileData.updated = 1;
+            
+            // 保存用户数据用于登录
+            if (fileData.users) {
+                localUsers = fileData.users;
+            }
+            
+            // 显示上传按钮
+            document.getElementById('actionArea').innerHTML += `
+                <button class="btn btn-primary" onclick="uploadFolderData(${JSON.stringify(fileData).replace(/"/g, '&quot;')})" style="margin-top: 20px;">
+                    ⬆️ 上传数据并设置updated=1
+                </button>
+            `;
+        }
+
+        // ==================== 上传文件夹数据 ====================
+        async function uploadFolderData(fileData) {
+            document.getElementById('statusText').innerHTML = '上传中...';
+            document.getElementById('progressFill').style.width = '80%';
+            
+            try {
+                await uploadToCloud(fileData);
+                
+                document.getElementById('progressFill').style.width = '100%';
+                document.getElementById('statusText').innerHTML = '上传成功';
+                
+                document.getElementById('actionArea').innerHTML += `
+                    <button class="btn btn-primary" onclick="goToLogin()" style="margin-top: 20px;">
+                        进入登录界面
+                    </button>
+                `;
+                
+            } catch (error) {
+                alert('上传失败：' + error.message);
+            }
+        }
+
+        // ==================== 上传到云端 ====================
+        async function uploadToCloud(data) {
+            const url = `https://api.jsonbin.io/v3/b/${CONFIG.binId}`;
+            
+            const response = await fetch(url, {
+                method: 'PUT',
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Master-Key": CONFIG.masterKey
+                },
+                body: JSON.stringify(data)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`上传失败: HTTP ${response.status}`);
+            }
+            
+            return await response.json();
+        }
+
+        // ==================== 进入登录界面 ====================
+        function goToLogin() {
+            document.getElementById('syncScreen').classList.remove('active');
+            document.getElementById('loginScreen').classList.add('active');
+            renderUserSelect();
+        }
+
+        // ==================== 渲染用户列表 ====================
+        function renderUserSelect() {
+            const select = document.getElementById('userSelect');
+            select.innerHTML = '<option value="">请选择账号...</option>';
+            
+            if (!localUsers) return;
+            
+            Object.values(localUsers).forEach(user => {
+                if (user && user.username) {
+                    const option = document.createElement('option');
+                    option.value = user.username;
+                    option.textContent = `${user.display_name || user.username} (${user.role || 'user'})`;
+                    select.appendChild(option);
+                }
+            });
+        }
+
+        // ==================== 登录 ====================
+        function handleLogin() {
+            const username = document.getElementById('userSelect').value;
+            const password = document.getElementById('password').value;
+            
+            if (!username) {
+                alert('请选择账号');
+                return;
+            }
+            
+            const user = localUsers[username];
+            if (!user) {
+                alert('用户不存在');
+                return;
+            }
+            
+            if (user.password !== password) {
+                alert('密码错误');
+                return;
+            }
+            
+            alert(`欢迎 ${user.display_name || username}`);
+        }
+
+        // ==================== 格式化JSON ====================
+        function formatJson(text) {
+            try {
+                const obj = JSON.parse(text);
+                return JSON.stringify(obj, null, 2);
+            } catch {
+                return text;
+            }
+        }
+
+        // ==================== 初始化 ====================
+        window.onload = function() {
+            fetchCloudData();
+        };
+    </script>
+</body>
+</html>
