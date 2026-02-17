@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StudentOS - 同步</title>
+    <title>StudentOS 班级管理系统</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: 'Segoe UI', sans-serif;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
         }
 
         body {
@@ -22,76 +22,58 @@
         }
 
         .app-container {
-            width: 500px;
-            background: white;
+            width: 1400px;
+            max-width: 100%;
+            background: rgba(255, 255, 255, 0.95);
             border-radius: 20px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
             overflow: hidden;
+            backdrop-filter: blur(10px);
         }
 
-        .sync-screen, .login-screen {
+        /* 加载界面 */
+        .loading-screen {
             padding: 40px;
-            display: none;
+            text-align: center;
+            min-height: 600px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
         }
 
-        .sync-screen.active, .login-screen.active {
-            display: block;
+        .loading-header {
+            margin-bottom: 40px;
         }
 
-        h1 {
-            font-size: 2em;
+        .loading-header h1 {
+            font-size: 3em;
             color: #4a5568;
             margin-bottom: 10px;
-            text-align: center;
         }
 
-        .subtitle {
+        .loading-header .subtitle {
             color: #718096;
-            margin-bottom: 30px;
-            text-align: center;
+            font-size: 1.2em;
         }
 
-        .status-box {
-            background: #f7fafc;
-            padding: 20px;
-            border-radius: 10px;
-            margin: 20px 0;
-            font-family: monospace;
+        .loading-animation {
+            font-size: 4em;
+            margin: 30px 0;
+            animation: pulse 1.5s infinite;
         }
 
-        .status-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #e2e8f0;
-        }
-
-        .status-item:last-child {
-            border-bottom: none;
-        }
-
-        .label {
-            color: #718096;
-        }
-
-        .value {
-            color: #4a5568;
-            font-weight: bold;
-        }
-
-        .value.updated-1 {
-            color: #f56565;
-        }
-
-        .value.updated-0 {
-            color: #48bb78;
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.7; }
         }
 
         .progress-bar {
-            width: 100%;
-            height: 8px;
+            width: 80%;
+            max-width: 500px;
+            height: 10px;
             background: #e2e8f0;
-            border-radius: 4px;
+            border-radius: 5px;
             overflow: hidden;
             margin: 20px 0;
         }
@@ -103,47 +85,37 @@
             transition: width 0.3s;
         }
 
-        .raw-json {
-            background: #1a202c;
-            color: #a0aec0;
-            padding: 15px;
-            border-radius: 8px;
-            font-family: monospace;
-            font-size: 12px;
-            max-height: 200px;
-            overflow: auto;
-            margin: 20px 0;
-            white-space: pre-wrap;
-        }
-
-        .btn {
-            width: 100%;
-            padding: 15px;
-            border: none;
-            border-radius: 8px;
-            font-size: 1.1em;
-            cursor: pointer;
-            transition: transform 0.2s;
-            margin: 10px 0;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-
-        .btn-secondary {
-            background: #edf2f7;
+        .sync-status {
             color: #4a5568;
+            margin: 20px 0;
+            font-size: 1.1em;
         }
 
-        .btn-secondary:hover {
-            background: #e2e8f0;
+        /* 登录界面 */
+        .login-screen {
+            padding: 40px;
+            text-align: center;
+            display: none;
+        }
+
+        .login-header {
+            margin-bottom: 40px;
+        }
+
+        .login-header h1 {
+            font-size: 3em;
+            color: #4a5568;
+            margin-bottom: 10px;
+        }
+
+        .login-header .subtitle {
+            color: #718096;
+            font-size: 1.2em;
+        }
+
+        .login-box {
+            max-width: 400px;
+            margin: 0 auto;
         }
 
         .user-select {
@@ -153,6 +125,8 @@
             border: 2px solid #e2e8f0;
             border-radius: 10px;
             font-size: 1.1em;
+            background: white;
+            cursor: pointer;
         }
 
         .password-input {
@@ -164,13 +138,346 @@
             font-size: 1.1em;
         }
 
+        .login-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.2em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin-top: 20px;
+        }
+
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        /* 主界面 */
+        .main-screen {
+            display: none;
+            min-height: 700px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .user-avatar {
+            font-size: 2.5em;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .user-avatar:hover {
+            transform: scale(1.1);
+        }
+
+        .user-details {
+            text-align: left;
+        }
+
+        .user-name {
+            font-size: 1.3em;
+            font-weight: bold;
+        }
+
+        .user-role {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+
+        .cloud-status {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .main-content {
+            display: flex;
+            min-height: 600px;
+        }
+
+        .sidebar {
+            width: 250px;
+            background: #f7fafc;
+            border-right: 1px solid #e2e8f0;
+            padding: 20px 0;
+        }
+
+        .menu-item {
+            padding: 15px 25px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #4a5568;
+            font-size: 1.1em;
+        }
+
+        .menu-item:hover {
+            background: #edf2f7;
+            padding-left: 30px;
+        }
+
+        .menu-item.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 10px rgba(102, 126, 234, 0.3);
+        }
+
+        .content-area {
+            flex: 1;
+            padding: 30px;
+            overflow-y: auto;
+            max-height: 600px;
+        }
+
+        .content-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 1.4em;
+            color: #2d3748;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            color: #718096;
+            margin-top: 5px;
+        }
+
+        .btn-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #edf2f7;
+            color: #4a5568;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-success {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-warning {
+            background: #f6ad55;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 0.9em;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .data-table th {
+            background: #f7fafc;
+            color: #4a5568;
+            font-weight: 600;
+        }
+
+        .data-table tr:hover {
+            background: #f7fafc;
+        }
+
+        .report-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .report-table th,
+        .report-table td {
+            padding: 10px;
+            text-align: center;
+            border: 1px solid #e2e8f0;
+        }
+
+        .report-table th {
+            background: #f7fafc;
+            font-weight: 600;
+        }
+
+        .report-status {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            cursor: pointer;
+        }
+
+        .status-reported {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .status-unreported {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        .score-input {
+            width: 60px;
+            padding: 5px;
+            text-align: center;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+        }
+
+        .action-btn {
+            padding: 5px 10px;
+            margin: 0 2px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .btn-minus {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-plus {
+            background: #48bb78;
+            color: white;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-title {
+            font-size: 1.4em;
+            margin-bottom: 20px;
+            color: #2d3748;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
         .folder-input {
             display: none;
         }
 
         .folder-label {
             display: block;
-            padding: 20px;
+            padding: 30px;
             background: #f7fafc;
             border: 2px dashed #cbd5e0;
             border-radius: 10px;
@@ -200,10 +507,6 @@
             font-size: 12px;
         }
 
-        .file-item:last-child {
-            border-bottom: none;
-        }
-
         .file-item.success {
             color: #48bb78;
         }
@@ -211,262 +514,328 @@
         .file-item.error {
             color: #f56565;
         }
+
+        .reward-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .reward-card {
+            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+            border-radius: 10px;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .reward-rarity-SP { background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%); }
+        .reward-rarity-SSR { background: linear-gradient(135deg, #f472b6 0%, #ec4899 100%); }
+        .reward-rarity-SR { background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%); }
+        .reward-rarity-R { background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%); }
+        .reward-rarity-N { background: linear-gradient(135deg, #9ca3af 0%, #6b7280 100%); }
+
+        .reward-name {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: white;
+        }
+
+        .reward-type {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+
+        .reward-desc {
+            color: white;
+            font-size: 0.95em;
+            line-height: 1.4;
+        }
+
+        .reward-prob {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.2);
+            color: white;
+            padding: 3px 8px;
+            border-radius: 15px;
+            font-size: 0.8em;
+        }
+
+        .info-box {
+            background: #e6f7ff;
+            border-left: 4px solid #1890ff;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .warning-box {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
     </style>
 </head>
 <body>
     <div class="app-container">
-        <!-- 同步界面 -->
-        <div class="sync-screen active" id="syncScreen">
-            <h1>🎓 StudentOS</h1>
-            <div class="subtitle">正在连接云端...</div>
-            
-            <div class="status-box">
-                <div class="status-item">
-                    <span class="label">状态：</span>
-                    <span class="value" id="statusText">连接中...</span>
-                </div>
-                <div class="status-item">
-                    <span class="label">HTTP状态：</span>
-                    <span class="value" id="httpStatus">-</span>
-                </div>
-                <div class="status-item">
-                    <span class="label">updated值：</span>
-                    <span class="value" id="updatedValue">-</span>
-                </div>
+        <!-- 加载界面 -->
+        <div class="loading-screen" id="loadingScreen">
+            <div class="loading-header">
+                <h1>🎓 StudentOS</h1>
+                <div class="subtitle">正在同步数据...</div>
             </div>
+            
+            <div class="loading-animation" id="loadingAnimation">☁️</div>
             
             <div class="progress-bar">
                 <div class="progress-fill" id="progressFill"></div>
             </div>
             
-            <div class="raw-json" id="rawJson">
-                等待响应...
+            <div class="sync-status" id="syncStatus">
+                连接中...
             </div>
-            
-            <div id="actionArea"></div>
         </div>
 
         <!-- 登录界面 -->
         <div class="login-screen" id="loginScreen">
-            <h1>🎓 StudentOS</h1>
-            <div class="subtitle">登录系统</div>
+            <div class="login-header">
+                <h1>🎓 StudentOS</h1>
+                <div class="subtitle">班级管理系统</div>
+            </div>
+            <div class="login-box">
+                <select class="user-select" id="userSelect">
+                    <option value="">请选择账号...</option>
+                </select>
+                <input type="password" class="password-input" id="password" placeholder="请输入密码">
+                <button class="login-btn" onclick="handleLogin()">登录系统</button>
+            </div>
+        </div>
+
+        <!-- 主界面 -->
+        <div class="main-screen" id="mainScreen">
+            <div class="header">
+                <div class="user-info">
+                    <span class="user-avatar" id="userAvatar" onclick="showAvatarSelector()">👤</span>
+                    <div class="user-details">
+                        <div class="user-name" id="userDisplayName">加载中...</div>
+                        <div class="user-role" id="userRole">学生</div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <div class="cloud-status" id="cloudStatus">
+                        <span id="cloudIcon">☁️</span>
+                        <span id="cloudText">本地模式</span>
+                    </div>
+                    <div class="friday-badge" id="fridayBadge">⏰ 抽奖时间：周五下午</div>
+                </div>
+            </div>
             
-            <select class="user-select" id="userSelect">
-                <option value="">请选择账号...</option>
-            </select>
-            
-            <input type="password" class="password-input" id="password" placeholder="密码">
-            
-            <button class="btn btn-primary" onclick="handleLogin()">登录</button>
+            <div class="main-content">
+                <!-- 侧边栏菜单 -->
+                <div class="sidebar" id="sidebar"></div>
+                
+                <!-- 内容区域 -->
+                <div class="content-area" id="contentArea"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通用模态框 -->
+    <div class="modal" id="modal">
+        <div class="modal-content" id="modalContent">
+            <div class="modal-title" id="modalTitle"></div>
+            <div id="modalBody"></div>
+            <div class="modal-buttons" id="modalButtons"></div>
         </div>
     </div>
 
     <script>
+        // ==================== 配置 ====================
         const CONFIG = {
             binId: "6975bf17d0ea881f4083a3af",
             masterKey: "$2a$10$jC76j4CEGgqz842YvvDucuoWG6emHsBbdqNr56rj8..53SEVCpp/u"
         };
 
-        let cloudData = null;
-        let localUsers = {};
-        let folderFiles = {};
+        // ==================== 数据存储键 ====================
+        const STORAGE_KEYS = {
+            USERS: 'studentos_users',
+            SCORES: 'studentos_scores',
+            GROUPS: 'studentos_groups',
+            RULES: 'studentos_rules',
+            LOGS: 'studentos_logs',
+            REWARDS: 'studentos_rewards',
+            PUNISHMENTS: 'studentos_punishments',
+            USER_PUNISHMENTS: 'studentos_user_punishments',
+            GOLD: 'studentos_gold',
+            EXCHANGE_RATE: 'studentos_exchange_rate',
+            EMOJI: 'studentos_emoji',
+            DAILY_REPORT: 'studentos_daily_report'
+        };
 
-        // ==================== 获取云端数据 ====================
-        async function fetchCloudData() {
-            const url = `https://api.jsonbin.io/v3/b/${CONFIG.binId}/latest`;
-            
-            try {
-                document.getElementById('statusText').innerHTML = '下载中...';
-                
-                const response = await fetch(url, {
-                    headers: { "X-Master-Key": CONFIG.masterKey }
-                });
-                
-                document.getElementById('httpStatus').innerHTML = response.status;
-                
-                const rawText = await response.text();
-                document.getElementById('rawJson').innerHTML = formatJson(rawText);
-                
-                // 解析数据
-                const parsed = JSON.parse(rawText);
-                
-                if (parsed.record) {
-                    cloudData = parsed.record;
-                    document.getElementById('updatedValue').innerHTML = 
-                        `<span class="value ${cloudData.updated === 1 ? 'updated-1' : 'updated-0'}">${cloudData.updated}</span>`;
-                } else {
-                    cloudData = parsed;
-                    document.getElementById('updatedValue').innerHTML = 
-                        `<span class="value ${cloudData.updated === 1 ? 'updated-1' : 'updated-0'}">${cloudData.updated}</span>`;
-                }
-                
-                document.getElementById('progressFill').style.width = '100%';
-                document.getElementById('statusText').innerHTML = '完成';
-                
-                // 根据updated值决定下一步
-                if (cloudData.updated === 1) {
-                    // updated=1: 直接用下载的数据登录
-                    showLoginWithCloudData();
-                } else {
-                    // updated=0: 需要选择文件夹
-                    showFolderSelect();
-                }
-                
-            } catch (error) {
-                document.getElementById('statusText').innerHTML = '错误';
-                document.getElementById('rawJson').innerHTML = `❌ ${error}`;
+        // ==================== 全局状态 ====================
+        let currentUser = null;
+        let appData = {
+            users: {},
+            scores: {},
+            groups: {},
+            rules: {},
+            logs: [],
+            rewards: {},
+            punishments: {},
+            userPunishments: { active: {}, completed: {} },
+            gold: {},
+            exchangeRate: { score_to_gold: 0.1, gold_to_score: 1.0 },
+            emoji: '',
+            dailyReport: {}
+        };
+
+        // ==================== 文件映射 ====================
+        const FILE_MAPPING = {
+            'user.json': 'users',
+            'score.json': 'scores',
+            'gold_data.json': 'gold',
+            'rewards.json': 'rewards',
+            'punishment.json': 'punishments',
+            'usr_pun.json': 'userPunishments',
+            'log.json': 'logs',
+            'score_rules.json': 'rules',
+            'exchange_rate.json': 'exchangeRate',
+            'emoji.json': 'emoji'
+        };
+
+        // ==================== 工具函数 ====================
+        function formatDate(date = new Date()) {
+            return date.toISOString().slice(0, 19).replace('T', ' ');
+        }
+
+        function getBeijingDate(date = new Date()) {
+            const beijingTime = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+            return beijingTime.toISOString().split('T')[0];
+        }
+
+        function isFridayAfternoon() {
+            const now = new Date();
+            return now.getDay() === 5 && now.getHours() >= 12;
+        }
+
+        function saveData(key) {
+            const storageKey = STORAGE_KEYS[key.toUpperCase()];
+            if (storageKey) {
+                localStorage.setItem(storageKey, JSON.stringify(appData[key]));
             }
         }
 
-        // ==================== 用云端数据登录 ====================
-        function showLoginWithCloudData() {
-            const actionArea = document.getElementById('actionArea');
-            
-            if (cloudData && cloudData.users) {
-                localUsers = cloudData.users;
-                
-                actionArea.innerHTML = `
-                    <div class="status-box" style="background: #f0fdf4;">
-                        <div class="status-item">
-                            <span class="label">✅ updated=1，使用云端数据</span>
-                        </div>
-                        <div class="status-item">
-                            <span class="label">用户数：</span>
-                            <span class="value">${Object.keys(cloudData.users).length}</span>
-                        </div>
-                    </div>
-                    <button class="btn btn-primary" onclick="goToLogin()">进入登录界面</button>
-                `;
+        function loadFromStorage() {
+            for (const [key, storageKey] of Object.entries(STORAGE_KEYS)) {
+                const stored = localStorage.getItem(storageKey);
+                if (stored) {
+                    try {
+                        appData[key.toLowerCase()] = JSON.parse(stored);
+                    } catch (e) {
+                        console.error(`解析 ${key} 失败:`, e);
+                    }
+                }
             }
         }
 
-        // ==================== 显示文件夹选择 ====================
-        function showFolderSelect() {
-            const actionArea = document.getElementById('actionArea');
-            
-            actionArea.innerHTML = `
-                <div class="status-box" style="background: #fef3c7;">
-                    <div class="status-item">
-                        <span class="label">⚠️ updated=0，需要选择文件夹</span>
-                    </div>
-                </div>
-                <input type="file" id="folderInput" class="folder-input" webkitdirectory directory multiple onchange="handleFolderSelect(event)">
-                <label for="folderInput" class="folder-label">
-                    📁 点击选择数据文件夹<br>
-                    <span style="font-size: 0.9em; color: #718096;">将自动读取所有JSON文件</span>
-                </label>
-                <div id="fileList" class="file-list" style="display: none;"></div>
-            `;
-        }
-
-        // ==================== 处理文件夹选择 ====================
+        // ==================== 云端同步（仅上传）====================
         async function handleFolderSelect(event) {
             const files = event.target.files;
             if (!files || files.length === 0) return;
             
-            document.getElementById('fileList').style.display = 'block';
-            document.getElementById('fileList').innerHTML = '';
-            
-            document.getElementById('statusText').innerHTML = '读取文件中...';
+            document.getElementById('syncStatus').innerHTML = '正在读取文件...';
             document.getElementById('progressFill').style.width = '30%';
             
             const fileData = {};
             let jsonCount = 0;
             
-            // 文件映射
-            const fileMapping = {
-                'user.json': 'users',
-                'score.json': 'scores',
-                'gold_data.json': 'gold',
-                'rewards.json': 'rewards',
-                'punishment.json': 'punishments',
-                'usr_pun.json': 'userPunishments',
-                'log.json': 'logs',
-                'score_rules.json': 'rules',
-                'exchange_rate.json': 'exchangeRate',
-                'emoji.json': 'emoji'
-            };
-            
             for (let file of files) {
                 const fileName = file.name;
+                const dataKey = FILE_MAPPING[fileName];
                 
-                if (fileMapping[fileName]) {
+                if (dataKey) {
                     try {
                         const text = await file.text();
                         const data = JSON.parse(text);
                         
-                        // 添加到文件列表显示
-                        document.getElementById('fileList').innerHTML += `
-                            <div class="file-item success">✅ ${fileName} - 已读取</div>
-                        `;
-                        
-                        // 根据文件名处理数据
                         if (fileName === 'user.json') {
                             fileData.users = data.users || data;
                         } else if (fileName === 'score.json') {
                             fileData.scores = data.studentDefaultScore || data;
                             fileData.groups = data.studentGroups || {};
                         } else {
-                            fileData[fileMapping[fileName]] = data;
+                            fileData[dataKey] = data;
                         }
                         
                         jsonCount++;
                         
                     } catch (e) {
-                        document.getElementById('fileList').innerHTML += `
-                            <div class="file-item error">❌ ${fileName} - 读取失败</div>
-                        `;
+                        console.error(`读取失败 ${fileName}:`, e);
                     }
                 }
             }
             
             document.getElementById('progressFill').style.width = '60%';
-            document.getElementById('statusText').innerHTML = `已读取 ${jsonCount} 个JSON文件`;
+            document.getElementById('syncStatus').innerHTML = `已读取 ${jsonCount} 个文件，正在上传...`;
             
             if (jsonCount === 0) {
-                alert('文件夹中没有找到JSON文件');
+                alert('文件夹中没有找到有效的JSON文件');
+                document.getElementById('loadingScreen').style.display = 'none';
+                document.getElementById('loginScreen').style.display = 'block';
+                renderUserSelect();
                 return;
             }
             
             // 添加 updated=1 标记
             fileData.updated = 1;
             
-            // 保存用户数据用于登录
-            if (fileData.users) {
-                localUsers = fileData.users;
-            }
-            
-            // 显示上传按钮
-            document.getElementById('actionArea').innerHTML += `
-                <button class="btn btn-primary" onclick="uploadFolderData(${JSON.stringify(fileData).replace(/"/g, '&quot;')})" style="margin-top: 20px;">
-                    ⬆️ 上传数据并设置updated=1
-                </button>
-            `;
-        }
-
-        // ==================== 上传文件夹数据 ====================
-        async function uploadFolderData(fileData) {
-            document.getElementById('statusText').innerHTML = '上传中...';
-            document.getElementById('progressFill').style.width = '80%';
-            
             try {
+                // 上传到云端
                 await uploadToCloud(fileData);
                 
                 document.getElementById('progressFill').style.width = '100%';
-                document.getElementById('statusText').innerHTML = '上传成功';
+                document.getElementById('syncStatus').innerHTML = '同步完成！';
                 
-                document.getElementById('actionArea').innerHTML += `
-                    <button class="btn btn-primary" onclick="goToLogin()" style="margin-top: 20px;">
-                        进入登录界面
-                    </button>
-                `;
+                // 保存到本地
+                if (fileData.users) appData.users = fileData.users;
+                if (fileData.scores) appData.scores = fileData.scores;
+                if (fileData.groups) appData.groups = fileData.groups;
+                if (fileData.rules) appData.rules = fileData.rules;
+                if (fileData.rewards) appData.rewards = fileData.rewards;
+                if (fileData.punishments) appData.punishments = fileData.punishments;
+                if (fileData.gold) appData.gold = fileData.gold;
+                if (fileData.exchangeRate) appData.exchangeRate = fileData.exchangeRate;
+                if (fileData.emoji) appData.emoji = fileData.emoji;
+                if (fileData.dailyReport) appData.dailyReport = fileData.dailyReport;
+                
+                // 保存到localStorage
+                Object.keys(STORAGE_KEYS).forEach(key => {
+                    if (appData[key.toLowerCase()]) {
+                        localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(appData[key.toLowerCase()]));
+                    }
+                });
+                
+                setTimeout(() => {
+                    document.getElementById('loadingScreen').style.display = 'none';
+                    document.getElementById('loginScreen').style.display = 'block';
+                    renderUserSelect();
+                }, 1000);
                 
             } catch (error) {
                 alert('上传失败：' + error.message);
+                document.getElementById('loadingScreen').style.display = 'none';
+                document.getElementById('loginScreen').style.display = 'block';
+                renderUserSelect();
             }
         }
 
-        // ==================== 上传到云端 ====================
         async function uploadToCloud(data) {
             const url = `https://api.jsonbin.io/v3/b/${CONFIG.binId}`;
             
@@ -486,21 +855,26 @@
             return await response.json();
         }
 
-        // ==================== 进入登录界面 ====================
-        function goToLogin() {
-            document.getElementById('syncScreen').classList.remove('active');
-            document.getElementById('loginScreen').classList.add('active');
-            renderUserSelect();
+        // ==================== 权限检查 ====================
+        function hasPermission(permission) {
+            if (!currentUser) return false;
+            const role = currentUser.role;
+            
+            const permissions = {
+                user: ['我的分数', '排名管理', '学分抽奖', '惩罚管理', '金币系统'],
+                admin: ['分数管理', '分组管理', '排名管理', '数据备份', '学分抽奖', '惩罚管理', '金币系统', '我的分数', '每日汇报', '云端同步'],
+                root: ['分数管理', '分组管理', '排名管理', '操作日志', '数据备份', '学分抽奖', '惩罚管理', '金币系统', '我的分数', '每日汇报', '云端同步']
+            };
+            
+            return permissions[role]?.includes(permission) || false;
         }
 
-        // ==================== 渲染用户列表 ====================
+        // ==================== 登录 ====================
         function renderUserSelect() {
             const select = document.getElementById('userSelect');
             select.innerHTML = '<option value="">请选择账号...</option>';
             
-            if (!localUsers) return;
-            
-            Object.values(localUsers).forEach(user => {
+            Object.values(appData.users).forEach(user => {
                 if (user && user.username) {
                     const option = document.createElement('option');
                     option.value = user.username;
@@ -510,7 +884,6 @@
             });
         }
 
-        // ==================== 登录 ====================
         function handleLogin() {
             const username = document.getElementById('userSelect').value;
             const password = document.getElementById('password').value;
@@ -520,34 +893,1361 @@
                 return;
             }
             
-            const user = localUsers[username];
-            if (!user) {
-                alert('用户不存在');
-                return;
-            }
-            
-            if (user.password !== password) {
+            const user = appData.users[username];
+            if (!user || user.password !== password) {
                 alert('密码错误');
                 return;
             }
             
-            alert(`欢迎 ${user.display_name || username}`);
+            currentUser = { ...user, username };
+            
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('mainScreen').style.display = 'block';
+            
+            document.getElementById('userAvatar').textContent = currentUser.avatar || '👤';
+            document.getElementById('userDisplayName').textContent = currentUser.display_name || username;
+            const roleNames = { user: '👤 学生', admin: '🔧 管理员', root: '⚡ 超级管理员' };
+            document.getElementById('userRole').textContent = roleNames[currentUser.role] || '学生';
+            
+            const fridayBadge = document.getElementById('fridayBadge');
+            fridayBadge.innerHTML = isFridayAfternoon() ? 
+                '🎉 现在是周五下午，可以抽奖啦！' : 
+                '⏰ 抽奖时间：周五下午12:00后';
+            
+            renderSidebar();
+            showDashboard();
         }
 
-        // ==================== 格式化JSON ====================
-        function formatJson(text) {
-            try {
-                const obj = JSON.parse(text);
-                return JSON.stringify(obj, null, 2);
-            } catch {
-                return text;
+        // ==================== 侧边栏 ====================
+        function renderSidebar() {
+            const menuItems = [
+                { id: 'dashboard', icon: '🏠', name: '控制台', permission: null },
+                { id: 'myScore', icon: '📊', name: '我的分数', permission: '我的分数' },
+                { id: 'score', icon: '📊', name: '分数管理', permission: '分数管理' },
+                { id: 'group', icon: '👥', name: '分组管理', permission: '分组管理' },
+                { id: 'ranking', icon: '🏆', name: '排名管理', permission: '排名管理' },
+                { id: 'dailyReport', icon: '📋', name: '每日汇报', permission: '每日汇报' },
+                { id: 'gacha', icon: '🎰', name: '学分抽奖', permission: '学分抽奖' },
+                { id: 'punishment', icon: '🎯', name: '惩罚管理', permission: '惩罚管理' },
+                { id: 'gold', icon: '💰', name: '金币系统', permission: '金币系统' },
+                { id: 'logs', icon: '📋', name: '操作日志', permission: '操作日志' },
+                { id: 'cloudSync', icon: '☁️', name: '云端同步', permission: '云端同步' },
+                { id: 'backup', icon: '💾', name: '数据备份', permission: '数据备份' },
+                { id: 'account', icon: '👤', name: '账号管理', permission: null },
+                { id: 'logout', icon: '🚪', name: '退出系统', permission: null }
+            ];
+            
+            const sidebar = document.getElementById('sidebar');
+            sidebar.innerHTML = '';
+            
+            menuItems.forEach(item => {
+                if (item.permission && !hasPermission(item.permission)) return;
+                
+                const div = document.createElement('div');
+                div.className = 'menu-item';
+                div.innerHTML = `${item.icon} ${item.name}`;
+                div.onclick = () => {
+                    if (item.id === 'logout') {
+                        if (confirm('确定要退出系统吗？')) {
+                            currentUser = null;
+                            document.getElementById('loginScreen').style.display = 'block';
+                            document.getElementById('mainScreen').style.display = 'none';
+                            document.getElementById('password').value = '';
+                        }
+                        return;
+                    }
+                    
+                    document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
+                    div.classList.add('active');
+                    
+                    switch(item.id) {
+                        case 'dashboard': showDashboard(); break;
+                        case 'myScore': showMyScore(); break;
+                        case 'score': showScoreManagement(); break;
+                        case 'group': showGroupManagement(); break;
+                        case 'ranking': showRanking(); break;
+                        case 'dailyReport': showDailyReport(); break;
+                        case 'gacha': showGacha(); break;
+                        case 'punishment': showPunishment(); break;
+                        case 'gold': showGoldSystem(); break;
+                        case 'logs': showLogs(); break;
+                        case 'cloudSync': showCloudSync(); break;
+                        case 'backup': showBackup(); break;
+                        case 'account': showAccountManagement(); break;
+                    }
+                };
+                sidebar.appendChild(div);
+            });
+        }
+
+        // ==================== 控制台 ====================
+        function showDashboard() {
+            const studentId = currentUser.student_id;
+            const score = getStudentScore(studentId);
+            const gold = getStudentGold(studentId);
+            
+            const studentCount = Object.keys(appData.scores).filter(id => id !== '0').length;
+            const today = getBeijingDate();
+            const reportedToday = (appData.dailyReport[today] || []).length;
+            
+            document.getElementById('contentArea').innerHTML = `
+                <div class="content-card">
+                    <h2 class="card-title">📊 系统控制台</h2>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value">${score}</div>
+                            <div class="stat-label">我的学分</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${gold}</div>
+                            <div class="stat-label">我的金币</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${studentCount}</div>
+                            <div class="stat-label">学生总数</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${reportedToday}</div>
+                            <div class="stat-label">今日已汇报</div>
+                        </div>
+                    </div>
+                    
+                    <h3>📢 系统公告</h3>
+                    <ul style="margin: 20px 0; list-style: none;">
+                        <li style="margin: 10px 0; padding: 10px; background: #f7fafc; border-radius: 8px;">
+                            🎉 学分抽奖只在周五下午开放
+                        </li>
+                        <li style="margin: 10px 0; padding: 10px; background: #f7fafc; border-radius: 8px;">
+                            🎯 惩罚抽取条件：分数低于100分
+                        </li>
+                        <li style="margin: 10px 0; padding: 10px; background: #f7fafc; border-radius: 8px;">
+                            💰 金币系统已上线，可以兑换学分！
+                        </li>
+                    </ul>
+                    
+                    <h3>📈 近期活动</h3>
+                    <div style="margin-top: 20px; max-height: 300px; overflow-y: auto;">
+                        ${(appData.logs || []).slice(0, 5).map(log => `
+                            <div style="padding: 10px; border-left: 3px solid #667eea; margin: 10px 0; background: #f7fafc;">
+                                <div>📅 ${log.timestamp}</div>
+                                <div>${log.student_name || '未知'} ${log.action}: ${log.score_change > 0 ? '+' : ''}${log.score_change}分</div>
+                                ${log.reason ? `<div style="color: #718096;">📝 ${log.reason}</div>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // ==================== 我的分数 ====================
+        function showMyScore() {
+            const studentId = currentUser.student_id;
+            const studentName = appData.scores[studentId]?.[0] || '未知';
+            const score = getStudentScore(studentId);
+            
+            const myLogs = (appData.logs || []).filter(log => log.student_id === studentId);
+            
+            document.getElementById('contentArea').innerHTML = `
+                <div class="content-card">
+                    <h2 class="card-title">📊 我的分数</h2>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value">${score}</div>
+                            <div class="stat-label">当前分数</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${myLogs.length}</div>
+                            <div class="stat-label">变化次数</div>
+                        </div>
+                    </div>
+                    
+                    <h3 style="margin-top: 30px;">🕒 最近变化</h3>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>操作</th>
+                                <th>变化</th>
+                                <th>原因</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${myLogs.slice(0, 10).map(log => `
+                                <tr>
+                                    <td>${log.timestamp ? log.timestamp.split(' ')[1] : ''}</td>
+                                    <td>${log.action || ''}</td>
+                                    <td style="color: ${log.score_change > 0 ? '#48bb78' : '#f56565'}">
+                                        ${log.score_change > 0 ? '+' : ''}${log.score_change}
+                                    </td>
+                                    <td>${log.reason || '-'}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // ==================== 分数管理 ====================
+        function showScoreManagement() {
+            const students = Object.entries(appData.scores || {})
+                .filter(([id]) => id !== '0')
+                .sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+            
+            document.getElementById('contentArea').innerHTML = `
+                <div class="content-card">
+                    <h2 class="card-title">📊 分数管理</h2>
+                    
+                    <div class="btn-grid">
+                        <button class="btn btn-primary" onclick="showScoreAddSingle()">➕ 单个加分</button>
+                        <button class="btn btn-primary" onclick="showScoreAddBatch()">🔢 批量加分</button>
+                        <button class="btn btn-primary" onclick="showScoreSet()">📝 设置分数</button>
+                    </div>
+                    
+                    <div style="margin-top: 30px;">
+                        <input type="text" placeholder="搜索学生..." style="width: 100%; padding: 10px; margin-bottom: 20px; border: 2px solid #e2e8f0; border-radius: 8px;" 
+                               onkeyup="filterStudents(this.value)">
+                        
+                        <table class="data-table" id="scoreTable">
+                            <thead>
+                                <tr>
+                                    <th>学号</th>
+                                    <th>姓名</th>
+                                    <th>分数</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${students.map(([id, [name, score]]) => `
+                                    <tr data-name="${name}">
+                                        <td>${id}</td>
+                                        <td>${name}</td>
+                                        <td>${score}</td>
+                                        <td>
+                                            <button class="btn btn-sm" onclick="quickAddScore('${id}', 2)">+2</button>
+                                            <button class="btn btn-sm" onclick="quickAddScore('${id}', -2)">-2</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        function filterStudents(keyword) {
+            const rows = document.querySelectorAll('#scoreTable tbody tr');
+            rows.forEach(row => {
+                const name = row.getAttribute('data-name') || '';
+                row.style.display = name.includes(keyword) ? '' : 'none';
+            });
+        }
+
+        function quickAddScore(studentId, change) {
+            if (updateStudentScore(studentId, change, '快速调整')) {
+                showScoreManagement();
             }
+        }
+
+        function showScoreAddSingle() {
+            const students = Object.entries(appData.scores || {})
+                .filter(([id]) => id !== '0')
+                .map(([id, [name, score]]) => `${id} - ${name} (${score}分)`);
+            
+            showModal('单个加分', `
+                <div style="margin: 20px 0;">
+                    <label>选择学生：</label>
+                    <select id="scoreStudentSelect" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;">
+                        ${students.map(s => `<option value="${s.split(' - ')[0]}">${s}</option>`).join('')}
+                    </select>
+                    
+                    <label>加分/扣分数值：</label>
+                    <input type="number" id="scoreChangeValue" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;" placeholder="正数为加分，负数为扣分">
+                    
+                    <label>原因（可选）：</label>
+                    <input type="text" id="scoreChangeReason" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;" placeholder="请输入原因">
+                </div>
+            `, [
+                { text: '取消', onclick: 'closeModal()' },
+                { text: '确认', onclick: 'handleScoreAddSingle()', className: 'btn-primary' }
+            ]);
+        }
+
+        function handleScoreAddSingle() {
+            const studentId = document.getElementById('scoreStudentSelect').value;
+            const change = parseFloat(document.getElementById('scoreChangeValue').value);
+            const reason = document.getElementById('scoreChangeReason').value;
+            
+            if (isNaN(change)) {
+                alert('请输入有效的分数');
+                return;
+            }
+            
+            if (updateStudentScore(studentId, change, reason)) {
+                closeModal();
+                showScoreManagement();
+            }
+        }
+
+        function showScoreAddBatch() {
+            const students = Object.entries(appData.scores || {})
+                .filter(([id]) => id !== '0')
+                .map(([id, [name, score]]) => `<label style="display: block; margin: 5px;">
+                    <input type="checkbox" value="${id}" class="batch-student"> ${id} - ${name} (${score}分)
+                </label>`);
+            
+            showModal('批量加分', `
+                <div style="margin: 20px 0;">
+                    <label>选择学生：</label>
+                    <div style="max-height: 200px; overflow-y: auto; border: 1px solid #e2e8f0; padding: 10px; border-radius: 8px;">
+                        ${students.join('')}
+                    </div>
+                    
+                    <label style="margin-top: 15px; display: block;">
+                        <input type="checkbox" onclick="toggleAllStudents(this)"> 全选
+                    </label>
+                    
+                    <label style="margin-top: 15px; display: block;">加分/扣分数值：</label>
+                    <input type="number" id="batchScoreChange" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;">
+                    
+                    <label>原因（可选）：</label>
+                    <input type="text" id="batchScoreReason" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;">
+                </div>
+            `, [
+                { text: '取消', onclick: 'closeModal()' },
+                { text: '确认', onclick: 'handleScoreAddBatch()', className: 'btn-primary' }
+            ]);
+        }
+
+        function toggleAllStudents(checkbox) {
+            document.querySelectorAll('.batch-student').forEach(cb => cb.checked = checkbox.checked);
+        }
+
+        function handleScoreAddBatch() {
+            const checkboxes = document.querySelectorAll('.batch-student:checked');
+            const change = parseFloat(document.getElementById('batchScoreChange').value);
+            const reason = document.getElementById('batchScoreReason').value;
+            
+            if (checkboxes.length === 0) {
+                alert('请选择至少一个学生');
+                return;
+            }
+            
+            if (isNaN(change)) {
+                alert('请输入有效的分数');
+                return;
+            }
+            
+            let success = 0;
+            checkboxes.forEach(cb => {
+                if (updateStudentScore(cb.value, change, reason)) success++;
+            });
+            
+            alert(`操作成功！成功为 ${success} 名学生${change > 0 ? '加' : '减'}分`);
+            closeModal();
+            showScoreManagement();
+        }
+
+        function showScoreSet() {
+            const students = Object.entries(appData.scores || {})
+                .filter(([id]) => id !== '0')
+                .map(([id, [name, score]]) => `${id} - ${name} (${score}分)`);
+            
+            showModal('设置分数', `
+                <div style="margin: 20px 0;">
+                    <label>选择学生：</label>
+                    <select id="setStudentSelect" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;">
+                        ${students.map(s => `<option value="${s.split(' - ')[0]}">${s}</option>`).join('')}
+                    </select>
+                    
+                    <label>新分数：</label>
+                    <input type="number" id="setScoreValue" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;">
+                </div>
+            `, [
+                { text: '取消', onclick: 'closeModal()' },
+                { text: '确认', onclick: 'handleScoreSet()', className: 'btn-primary' }
+            ]);
+        }
+
+        function handleScoreSet() {
+            const studentId = document.getElementById('setStudentSelect').value;
+            const newScore = parseFloat(document.getElementById('setScoreValue').value);
+            
+            if (isNaN(newScore)) {
+                alert('请输入有效的分数');
+                return;
+            }
+            
+            const oldScore = getStudentScore(studentId);
+            appData.scores[studentId][1] = newScore;
+            saveData('scores');
+            addLog('设置分数', studentId, newScore - oldScore, newScore, `从${oldScore}设置为${newScore}`);
+            
+            alert('设置成功');
+            closeModal();
+            showScoreManagement();
+        }
+
+        // ==================== 分组管理 ====================
+        function showGroupManagement() {
+            const groups = appData.groups || {};
+            
+            document.getElementById('contentArea').innerHTML = `
+                <div class="content-card">
+                    <h2 class="card-title">👥 分组管理</h2>
+                    
+                    <div class="btn-grid">
+                        <button class="btn btn-primary" onclick="showGroupCreate()">🆕 创建分组</button>
+                        <button class="btn btn-primary" onclick="showGroupList()">📋 查看分组</button>
+                    </div>
+                    
+                    <div style="margin-top: 30px;">
+                        <h3>📊 分组概览</h3>
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-value">${Object.keys(groups).length}</div>
+                                <div class="stat-label">总分组数</div>
+                            </div>
+                        </div>
+                        
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>分组名称</th>
+                                    <th>成员数</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${Object.entries(groups).map(([name, members]) => `
+                                    <tr>
+                                        <td>${name}</td>
+                                        <td>${(members || []).length}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showGroupCreate() {
+            showModal('创建分组', `
+                <div style="margin: 20px 0;">
+                    <label>分组名称：</label>
+                    <input type="text" id="groupName" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;">
+                </div>
+            `, [
+                { text: '取消', onclick: 'closeModal()' },
+                { text: '创建', onclick: 'handleGroupCreate()', className: 'btn-primary' }
+            ]);
+        }
+
+        function handleGroupCreate() {
+            const name = document.getElementById('groupName').value.trim();
+            if (!name) {
+                alert('请输入分组名称');
+                return;
+            }
+            
+            if (!appData.groups) appData.groups = {};
+            if (appData.groups[name]) {
+                alert('分组已存在');
+                return;
+            }
+            
+            appData.groups[name] = [];
+            saveData('groups');
+            alert('创建成功');
+            closeModal();
+            showGroupManagement();
+        }
+
+        function showGroupList() {
+            const groups = appData.groups || {};
+            
+            showModal('分组列表', `
+                <div style="max-height: 400px; overflow-y: auto;">
+                    ${Object.entries(groups).map(([name, members]) => `
+                        <div style="margin-bottom: 20px; padding: 15px; background: #f7fafc; border-radius: 10px;">
+                            <h4 style="margin-bottom: 10px;">🔹 ${name} (${members.length}人)</h4>
+                            <p style="color: #718096;">${members.join(', ') || '暂无成员'}</p>
+                        </div>
+                    `).join('')}
+                </div>
+            `, [
+                { text: '关闭', onclick: 'closeModal()' }
+            ]);
+        }
+
+        // ==================== 排名管理 ====================
+        function showRanking() {
+            const rankings = getTopRanking();
+            
+            document.getElementById('contentArea').innerHTML = `
+                <div class="content-card">
+                    <h2 class="card-title">🏆 排名管理</h2>
+                    
+                    <div class="btn-grid">
+                        <button class="btn btn-primary" onclick="showIndividualRanking()">👤 个人排名</button>
+                    </div>
+                    
+                    <div style="margin-top: 30px;">
+                        <h3>📊 个人排名 TOP 10</h3>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>排名</th>
+                                    <th>姓名</th>
+                                    <th>学号</th>
+                                    <th>分数</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rankings.slice(0, 10).map((rank, index) => `
+                                    <tr>
+                                        <td>${index + 1}</td>
+                                        <td>${rank.name}</td>
+                                        <td>${rank.id}</td>
+                                        <td><strong>${rank.score}</strong></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        function getTopRanking() {
+            return Object.entries(appData.scores || {})
+                .filter(([id]) => id !== '0')
+                .map(([id, [name, score]]) => ({ id, name, score }))
+                .sort((a, b) => b.score - a.score);
+        }
+
+        function showIndividualRanking() {
+            const rankings = getTopRanking();
+            
+            showModal('个人排名', `
+                <div style="max-height: 400px; overflow-y: auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>排名</th>
+                                <th>姓名</th>
+                                <th>学号</th>
+                                <th>分数</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rankings.map((rank, index) => `
+                                <tr>
+                                    <td>${index + 1}</td>
+                                    <td>${rank.name}</td>
+                                    <td>${rank.id}</td>
+                                    <td><strong>${rank.score}</strong></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `, [
+                { text: '关闭', onclick: 'closeModal()' }
+            ]);
+        }
+
+        // ==================== 每日汇报 ====================
+        function showDailyReport() {
+            const students = Object.entries(appData.scores || {})
+                .filter(([id]) => id !== '0')
+                .sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+            
+            const today = getBeijingDate();
+            const reportedToday = appData.dailyReport[today] || [];
+            
+            document.getElementById('contentArea').innerHTML = `
+                <div class="content-card">
+                    <h2 class="card-title">📋 每日汇报</h2>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value">${reportedToday.length}</div>
+                            <div class="stat-label">今日已汇报</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 30px; overflow-x: auto;">
+                        <table class="report-table">
+                            <thead>
+                                <tr>
+                                    <th>学号</th>
+                                    <th>姓名</th>
+                                    <th>分数</th>
+                                    <th>今日汇报</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${students.map(([id, [name, score]]) => {
+                                    const isReported = reportedToday.includes(id);
+                                    return `
+                                        <tr>
+                                            <td>${id}</td>
+                                            <td>${name}</td>
+                                            <td>${score}</td>
+                                            <td>
+                                                <span class="report-status ${isReported ? 'status-reported' : 'status-unreported'}" 
+                                                      onclick="toggleReport('${id}')">
+                                                    ${isReported ? '✓ 已汇报' : '⭕ 未汇报'}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <button class="action-btn btn-minus" onclick="quickAdjust('${id}', -2)">-2</button>
+                                                <button class="action-btn btn-plus" onclick="quickAdjust('${id}', 2)">+2</button>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleReport(studentId) {
+            const today = getBeijingDate();
+            if (!appData.dailyReport[today]) {
+                appData.dailyReport[today] = [];
+            }
+            
+            const index = appData.dailyReport[today].indexOf(studentId);
+            if (index === -1) {
+                appData.dailyReport[today].push(studentId);
+            } else {
+                appData.dailyReport[today].splice(index, 1);
+            }
+            
+            saveData('dailyReport');
+            showDailyReport();
+        }
+
+        function quickAdjust(studentId, change) {
+            updateStudentScore(studentId, change, '每日汇报调整');
+            showDailyReport();
+        }
+
+        // ==================== 学分抽奖 ====================
+        function showGacha() {
+            const studentId = currentUser.student_id;
+            const gold = getStudentGold(studentId);
+            
+            document.getElementById('contentArea').innerHTML = `
+                <div class="content-card">
+                    <h2 class="card-title">🎰 学分抽奖</h2>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value">${gold}</div>
+                            <div class="stat-label">我的金币</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">160</div>
+                            <div class="stat-label">单抽价格</div>
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: center; margin: 30px 0;">
+                        ${isFridayAfternoon() 
+                            ? `<div style="background: #fef3c7; padding: 15px; border-radius: 10px; color: #d97706;">
+                                🎉 现在是周五下午，可以抽奖啦！
+                               </div>`
+                            : `<div style="background: #e2e8f0; padding: 15px; border-radius: 10px;">
+                                ⏰ 抽奖只在周五下午12:00后开放
+                               </div>`
+                        }
+                    </div>
+                    
+                    <div class="btn-grid">
+                        <button class="btn btn-primary" onclick="handleSingleGacha()" ${!isFridayAfternoon() ? 'disabled' : ''}>
+                            🎯 单次抽奖 (160金币)
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function handleSingleGacha() {
+            const studentId = currentUser.student_id;
+            const gold = getStudentGold(studentId);
+            
+            if (gold < 160) {
+                alert('金币不足！');
+                return;
+            }
+            
+            if (!confirm(`消耗160金币进行抽奖，确定吗？`)) return;
+            
+            updateStudentGold(studentId, -160);
+            
+            const rewards = Object.values(appData.rewards || {}).flat() || [{ name: '谢谢参与', type: '虚拟', description: '下次好运！' }];
+            const reward = rewards[Math.floor(Math.random() * rewards.length)];
+            
+            if (reward.name.includes('+')) {
+                const scoreMatch = reward.name.match(/(\d+)/);
+                if (scoreMatch) {
+                    const score = parseInt(scoreMatch[0]);
+                    updateStudentScore(studentId, score, `抽奖获得: ${reward.name}`);
+                }
+            }
+            
+            alert(`🎉 获得: ${reward.name}\n${reward.description}`);
+            showGacha();
+        }
+
+        // ==================== 惩罚管理 ====================
+        function showPunishment() {
+            const studentId = currentUser.student_id;
+            const score = getStudentScore(studentId);
+            const activePuns = (appData.userPunishments?.active?.[studentId]) || [];
+            
+            document.getElementById('contentArea').innerHTML = `
+                <div class="content-card">
+                    <h2 class="card-title">🎯 惩罚管理</h2>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value">${score}</div>
+                            <div class="stat-label">当前分数</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${activePuns.length}</div>
+                            <div class="stat-label">进行中</div>
+                        </div>
+                    </div>
+                    
+                    ${score < 100 
+                        ? `<div style="background: #fef3c7; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                            🎯 你的分数低于100分，可以抽取惩罚！
+                           </div>`
+                        : `<div style="background: #e2e8f0; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                            ⚠️ 只有分数低于100分才能抽取惩罚
+                           </div>`
+                    }
+                    
+                    <div class="btn-grid">
+                        <button class="btn btn-primary" onclick="handleDrawPunishment()" ${score >= 100 ? 'disabled' : ''}>
+                            🎲 抽取惩罚
+                        </button>
+                        <button class="btn btn-primary" onclick="showMyPunishments()">
+                            📋 我的惩罚
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function handleDrawPunishment() {
+            const studentId = currentUser.student_id;
+            const score = getStudentScore(studentId);
+            
+            if (score >= 100) {
+                alert('分数需低于100分才能抽取惩罚');
+                return;
+            }
+            
+            const pool = Object.values(appData.punishments || {}).flat() || [{ name: '默认惩罚', description: '完成一项任务', score: [5, -2] }];
+            const punishment = pool[Math.floor(Math.random() * pool.length)];
+            
+            const newPun = {
+                id: Date.now().toString(),
+                name: punishment.name || '未知惩罚',
+                description: punishment.description || '',
+                success_gold: (punishment.score?.[0] || 0) * 10,
+                fail_gold: (punishment.score?.[1] || 0) * 10,
+                deadline: new Date(Date.now() + 7*24*60*60*1000).toISOString(),
+                status: 'active'
+            };
+            
+            if (!appData.userPunishments) appData.userPunishments = { active: {}, completed: {} };
+            if (!appData.userPunishments.active[studentId]) {
+                appData.userPunishments.active[studentId] = [];
+            }
+            appData.userPunishments.active[studentId].push(newPun);
+            saveData('userPunishments');
+            
+            alert(`🎯 抽到惩罚: ${newPun.name}\n${newPun.description}`);
+            showPunishment();
+        }
+
+        function showMyPunishments() {
+            const studentId = currentUser.student_id;
+            const active = (appData.userPunishments?.active?.[studentId]) || [];
+            
+            showModal('我的惩罚', `
+                <div>
+                    <h4>📋 进行中的惩罚 (${active.length})</h4>
+                    ${active.map(pun => `
+                        <div style="padding: 10px; margin: 10px 0; background: #f7fafc; border-radius: 8px;">
+                            <strong>${pun.name}</strong>
+                            <p style="font-size: 0.9em; color: #718096;">${pun.description}</p>
+                            <p>✅ 成功: +${pun.success_gold}金币 | ❌ 失败: ${pun.fail_gold}金币</p>
+                        </div>
+                    `).join('') || '<p style="color: #718096;">暂无进行中的惩罚</p>'}
+                </div>
+            `, [
+                { text: '关闭', onclick: 'closeModal()' }
+            ]);
+        }
+
+        // ==================== 金币系统 ====================
+        function showGoldSystem() {
+            const studentId = currentUser.student_id;
+            const score = getStudentScore(studentId);
+            const gold = getStudentGold(studentId);
+            
+            document.getElementById('contentArea').innerHTML = `
+                <div class="content-card">
+                    <h2 class="card-title">💰 金币系统</h2>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value">${score}</div>
+                            <div class="stat-label">学分</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${gold}</div>
+                            <div class="stat-label">金币</div>
+                        </div>
+                    </div>
+                    
+                    <div class="btn-grid">
+                        <button class="btn btn-primary" onclick="showScoreToGold()">🔄 学分兑换金币</button>
+                        <button class="btn btn-primary" onclick="showGoldToScore()">🔄 金币兑换学分</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showScoreToGold() {
+            const studentId = currentUser.student_id;
+            const score = getStudentScore(studentId);
+            const rate = 0.1;
+            
+            showModal('学分兑换金币', `
+                <div style="margin: 20px 0;">
+                    <p>当前学分: ${score}</p>
+                    <p>汇率: 1学分 = ${rate}金币</p>
+                    
+                    <label>兑换学分数量：</label>
+                    <input type="number" id="exchangeScore" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;" value="10">
+                </div>
+            `, [
+                { text: '取消', onclick: 'closeModal()' },
+                { text: '确认兑换', onclick: 'handleScoreToGold()', className: 'btn-primary' }
+            ]);
+        }
+
+        function handleScoreToGold() {
+            const studentId = currentUser.student_id;
+            const score = parseFloat(document.getElementById('exchangeScore').value);
+            
+            if (isNaN(score) || score <= 0) {
+                alert('请输入有效的数量');
+                return;
+            }
+            
+            const currentScore = getStudentScore(studentId);
+            if (score > currentScore) {
+                alert('学分不足');
+                return;
+            }
+            
+            const gold = score * 0.1;
+            
+            updateStudentScore(studentId, -score, `兑换金币 ${gold.toFixed(2)}`);
+            updateStudentGold(studentId, gold);
+            
+            alert(`兑换成功！获得 ${gold.toFixed(2)} 金币`);
+            closeModal();
+            showGoldSystem();
+        }
+
+        function showGoldToScore() {
+            const studentId = currentUser.student_id;
+            const gold = getStudentGold(studentId);
+            const rate = 1.0;
+            
+            showModal('金币兑换学分', `
+                <div style="margin: 20px 0;">
+                    <p>当前金币: ${gold}</p>
+                    <p>汇率: 1金币 = ${rate}学分</p>
+                    
+                    <label>兑换金币数量：</label>
+                    <input type="number" id="exchangeGold" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;" value="10">
+                </div>
+            `, [
+                { text: '取消', onclick: 'closeModal()' },
+                { text: '确认兑换', onclick: 'handleGoldToScore()', className: 'btn-primary' }
+            ]);
+        }
+
+        function handleGoldToScore() {
+            const studentId = currentUser.student_id;
+            const gold = parseFloat(document.getElementById('exchangeGold').value);
+            
+            if (isNaN(gold) || gold <= 0) {
+                alert('请输入有效的数量');
+                return;
+            }
+            
+            const currentGold = getStudentGold(studentId);
+            if (gold > currentGold) {
+                alert('金币不足');
+                return;
+            }
+            
+            const score = gold * 1.0;
+            
+            updateStudentGold(studentId, -gold);
+            updateStudentScore(studentId, score, `用 ${gold} 金币兑换`);
+            
+            alert(`兑换成功！获得 ${score.toFixed(2)} 学分`);
+            closeModal();
+            showGoldSystem();
+        }
+
+        // ==================== 操作日志 ====================
+        function showLogs() {
+            document.getElementById('contentArea').innerHTML = `
+                <div class="content-card">
+                    <h2 class="card-title">📋 操作日志</h2>
+                    
+                    <div style="max-height: 500px; overflow-y: auto;">
+                        ${(appData.logs || []).map(log => `
+                            <div style="padding: 15px; margin: 10px 0; background: #f7fafc; border-radius: 8px;">
+                                <div>📅 ${log.timestamp}</div>
+                                <div><strong>${log.student_name}</strong> ${log.action}: ${log.score_change > 0 ? '+' : ''}${log.score_change}分</div>
+                                ${log.reason ? `<div style="color: #718096;">📝 ${log.reason}</div>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // ==================== 云端同步（仅上传）====================
+        function showCloudSync() {
+            document.getElementById('contentArea').innerHTML = `
+                <div class="content-card">
+                    <h2 class="card-title">☁️ 云端同步</h2>
+                    
+                    <div class="info-box">
+                        <strong>📌 说明：</strong><br>
+                        • 选择包含JSON文件的文件夹<br>
+                        • 自动上传所有数据到云端<br>
+                        • 上传后设置 updated=1
+                    </div>
+                    
+                    <input type="file" id="cloudFolderInput" class="folder-input" webkitdirectory directory multiple onchange="handleCloudUpload(event)">
+                    <label for="cloudFolderInput" class="folder-label">
+                        📁 选择数据文件夹<br>
+                        <span style="font-size: 0.9em; color: #718096;">将自动上传所有JSON文件</span>
+                    </label>
+                    
+                    <div id="cloudFileList" class="file-list"></div>
+                </div>
+            `;
+        }
+
+        async function handleCloudUpload(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+            
+            const fileList = document.getElementById('cloudFileList');
+            fileList.style.display = 'block';
+            fileList.innerHTML = '';
+            
+            const fileData = {};
+            let jsonCount = 0;
+            
+            for (let file of files) {
+                const fileName = file.name;
+                const dataKey = FILE_MAPPING[fileName];
+                
+                if (dataKey) {
+                    try {
+                        const text = await file.text();
+                        const data = JSON.parse(text);
+                        
+                        fileList.innerHTML += `<div class="file-item success">✅ ${fileName} - 已读取</div>`;
+                        
+                        if (fileName === 'user.json') {
+                            fileData.users = data.users || data;
+                        } else if (fileName === 'score.json') {
+                            fileData.scores = data.studentDefaultScore || data;
+                            fileData.groups = data.studentGroups || {};
+                        } else {
+                            fileData[dataKey] = data;
+                        }
+                        
+                        jsonCount++;
+                        
+                    } catch (e) {
+                        fileList.innerHTML += `<div class="file-item error">❌ ${fileName} - 读取失败</div>`;
+                    }
+                }
+            }
+            
+            if (jsonCount === 0) {
+                alert('文件夹中没有找到JSON文件');
+                return;
+            }
+            
+            fileList.innerHTML += `<div class="file-item success">📤 正在上传 ${jsonCount} 个文件...</div>`;
+            
+            fileData.updated = 1;
+            
+            try {
+                await uploadToCloud(fileData);
+                fileList.innerHTML += `<div class="file-item success">✅ 上传成功！</div>`;
+                
+                // 更新本地数据
+                if (fileData.users) appData.users = fileData.users;
+                if (fileData.scores) appData.scores = fileData.scores;
+                if (fileData.groups) appData.groups = fileData.groups;
+                
+                Object.keys(STORAGE_KEYS).forEach(key => {
+                    if (appData[key.toLowerCase()]) {
+                        localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(appData[key.toLowerCase()]));
+                    }
+                });
+                
+            } catch (error) {
+                fileList.innerHTML += `<div class="file-item error">❌ 上传失败: ${error.message}</div>`;
+            }
+        }
+
+        // ==================== 数据备份 ====================
+        function showBackup() {
+            document.getElementById('contentArea').innerHTML = `
+                <div class="content-card">
+                    <h2 class="card-title">💾 数据备份</h2>
+                    
+                    <div class="btn-grid">
+                        <button class="btn btn-primary" onclick="exportData()">📤 导出数据</button>
+                        <button class="btn btn-primary" onclick="importData()">📂 导入数据</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function exportData() {
+            const data = {};
+            Object.keys(STORAGE_KEYS).forEach(key => {
+                data[key] = appData[key.toLowerCase()];
+            });
+            
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `studentos_backup_${formatDate().replace(/[: ]/g, '_')}.json`;
+            a.click();
+        }
+
+        function importData() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = function(e) {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const imported = JSON.parse(e.target.result);
+                        Object.keys(STORAGE_KEYS).forEach(key => {
+                            if (imported[key]) {
+                                localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(imported[key]));
+                            }
+                        });
+                        alert('数据导入成功！');
+                        location.reload();
+                    } catch (err) {
+                        alert('导入失败：无效的数据文件');
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        }
+
+        // ==================== 账号管理 ====================
+        function showAccountManagement() {
+            document.getElementById('contentArea').innerHTML = `
+                <div class="content-card">
+                    <h2 class="card-title">👤 账号管理</h2>
+                    
+                    <div style="text-align: center; margin: 30px 0;">
+                        <span style="font-size: 5em; cursor: pointer;" onclick="showAvatarSelector()">${currentUser.avatar || '👤'}</span>
+                    </div>
+                    
+                    <table class="data-table">
+                        <tr><td><strong>用户名</strong></td><td>${currentUser.username}</td></tr>
+                        <tr><td><strong>显示名称</strong></td><td>${currentUser.display_name}</td></tr>
+                        <tr><td><strong>身份</strong></td><td>${currentUser.role}</td></tr>
+                        <tr><td><strong>学号</strong></td><td>${currentUser.student_id || '无'}</td></tr>
+                    </table>
+                    
+                    <div class="btn-grid" style="margin-top: 30px;">
+                        <button class="btn btn-primary" onclick="showChangePassword()">🔑 修改密码</button>
+                        <button class="btn btn-primary" onclick="showChangeDisplayName()">📝 修改显示名称</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showChangePassword() {
+            showModal('修改密码', `
+                <div style="margin: 20px 0;">
+                    <label>新密码：</label>
+                    <input type="password" id="newPassword" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;">
+                    
+                    <label>确认新密码：</label>
+                    <input type="password" id="confirmPassword" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;">
+                </div>
+            `, [
+                { text: '取消', onclick: 'closeModal()' },
+                { text: '确认修改', onclick: 'handleChangePassword()', className: 'btn-primary' }
+            ]);
+        }
+
+        function handleChangePassword() {
+            const newPass = document.getElementById('newPassword').value;
+            const confirm = document.getElementById('confirmPassword').value;
+            
+            if (newPass.length < 4) {
+                alert('密码长度不能少于4位');
+                return;
+            }
+            
+            if (newPass !== confirm) {
+                alert('两次输入的密码不一致');
+                return;
+            }
+            
+            currentUser.password = newPass;
+            appData.users[currentUser.username].password = newPass;
+            saveData('users');
+            
+            alert('密码修改成功！');
+            closeModal();
+        }
+
+        function showChangeDisplayName() {
+            showModal('修改显示名称', `
+                <div style="margin: 20px 0;">
+                    <label>新显示名称：</label>
+                    <input type="text" id="newDisplayName" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;" value="${currentUser.display_name}">
+                </div>
+            `, [
+                { text: '取消', onclick: 'closeModal()' },
+                { text: '确认修改', onclick: 'handleChangeDisplayName()', className: 'btn-primary' }
+            ]);
+        }
+
+        function handleChangeDisplayName() {
+            const newName = document.getElementById('newDisplayName').value.trim();
+            if (!newName) {
+                alert('显示名称不能为空');
+                return;
+            }
+            
+            currentUser.display_name = newName;
+            appData.users[currentUser.username].display_name = newName;
+            saveData('users');
+            
+            document.getElementById('userDisplayName').textContent = newName;
+            alert('显示名称修改成功！');
+            closeModal();
+            showAccountManagement();
+        }
+
+        function showAvatarSelector() {
+            const emojis = Array.from('😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘');
+            
+            showModal('选择头像', `
+                <div style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px;">
+                    ${emojis.map(emoji => `
+                        <div onclick="selectAvatar('${emoji}')" style="font-size: 2em; text-align: center; padding: 5px; cursor: pointer; border-radius: 5px; background: #f7fafc;">
+                            ${emoji}
+                        </div>
+                    `).join('')}
+                </div>
+            `, [
+                { text: '取消', onclick: 'closeModal()' }
+            ]);
+        }
+
+        function selectAvatar(emoji) {
+            currentUser.avatar = emoji;
+            appData.users[currentUser.username].avatar = emoji;
+            saveData('users');
+            document.getElementById('userAvatar').textContent = emoji;
+            closeModal();
+        }
+
+        // ==================== 辅助函数 ====================
+        function getStudentScore(studentId) {
+            return appData.scores[studentId]?.[1] || 0;
+        }
+
+        function getStudentGold(studentId) {
+            return appData.gold[studentId]?.amount || 0;
+        }
+
+        function updateStudentScore(studentId, change, reason = '') {
+            if (!appData.scores[studentId]) return false;
+            const oldScore = appData.scores[studentId][1];
+            appData.scores[studentId][1] = oldScore + change;
+            saveData('scores');
+            addLog('分数调整', studentId, change, appData.scores[studentId][1], reason);
+            return true;
+        }
+
+        function updateStudentGold(studentId, change) {
+            if (!appData.gold[studentId]) {
+                appData.gold[studentId] = { amount: 0, last_updated: formatDate() };
+            }
+            appData.gold[studentId].amount += change;
+            appData.gold[studentId].last_updated = formatDate();
+            saveData('gold');
+            return true;
+        }
+
+        function addLog(action, studentId, scoreChange, currentScore, reason = '') {
+            const studentName = appData.scores[studentId]?.[0] || '未知';
+            const log = {
+                timestamp: formatDate(),
+                action,
+                student_id: studentId,
+                student_name: studentName,
+                score_change: scoreChange,
+                current_score: currentScore,
+                reason
+            };
+            appData.logs.unshift(log);
+            if (appData.logs.length > 100) appData.logs.pop();
+            saveData('logs');
+        }
+
+        // ==================== 模态框 ====================
+        function showModal(title, body, buttons) {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalBody').innerHTML = body;
+            
+            const buttonsDiv = document.getElementById('modalButtons');
+            buttonsDiv.innerHTML = '';
+            
+            buttons.forEach(btn => {
+                const button = document.createElement('button');
+                button.className = `btn ${btn.className || ''}`;
+                button.textContent = btn.text;
+                button.onclick = new Function(btn.onclick);
+                buttonsDiv.appendChild(button);
+            });
+            
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('modal').classList.remove('active');
         }
 
         // ==================== 初始化 ====================
         window.onload = function() {
-            fetchCloudData();
+            loadFromStorage();
+            
+            // 如果没有数据，显示文件上传
+            if (Object.keys(appData.users).length === 0) {
+                document.getElementById('loadingScreen').innerHTML = `
+                    <div class="loading-header">
+                        <h1>🎓 StudentOS</h1>
+                        <div class="subtitle">首次运行，请选择数据文件夹</div>
+                    </div>
+                    
+                    <input type="file" id="initialFolderInput" class="folder-input" webkitdirectory directory multiple onchange="handleInitialUpload(event)">
+                    <label for="initialFolderInput" class="folder-label">
+                        📁 选择数据文件夹<br>
+                        <span style="font-size: 0.9em; color: #718096;">将自动读取所有JSON文件</span>
+                    </label>
+                `;
+            } else {
+                // 有数据，显示登录界面
+                setTimeout(() => {
+                    document.getElementById('loadingScreen').style.display = 'none';
+                    document.getElementById('loginScreen').style.display = 'block';
+                    renderUserSelect();
+                }, 1000);
+            }
         };
+
+        async function handleInitialUpload(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+            
+            document.getElementById('loadingScreen').innerHTML = `
+                <div class="loading-header">
+                    <h1>🎓 StudentOS</h1>
+                    <div class="subtitle">正在加载数据...</div>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 50%"></div>
+                </div>
+            `;
+            
+            for (let file of files) {
+                const fileName = file.name;
+                const dataKey = FILE_MAPPING[fileName];
+                
+                if (dataKey) {
+                    try {
+                        const text = await file.text();
+                        const data = JSON.parse(text);
+                        
+                        if (fileName === 'user.json') {
+                            appData.users = data.users || data;
+                        } else if (fileName === 'score.json') {
+                            appData.scores = data.studentDefaultScore || data;
+                            appData.groups = data.studentGroups || {};
+                        } else {
+                            appData[dataKey] = data;
+                        }
+                        
+                    } catch (e) {
+                        console.error(`读取失败 ${fileName}:`, e);
+                    }
+                }
+            }
+            
+            // 保存到localStorage
+            Object.keys(STORAGE_KEYS).forEach(key => {
+                if (appData[key.toLowerCase()]) {
+                    localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(appData[key.toLowerCase()]));
+                }
+            });
+            
+            document.getElementById('progressFill').style.width = '100%';
+            
+            setTimeout(() => {
+                document.getElementById('loadingScreen').style.display = 'none';
+                document.getElementById('loginScreen').style.display = 'block';
+                renderUserSelect();
+            }, 1000);
+        }
     </script>
 </body>
 </html>
