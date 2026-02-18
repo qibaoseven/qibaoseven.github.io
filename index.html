@@ -3001,20 +3001,28 @@
             });
         }
 
+<<<<<<< HEAD
         // ==================== 云端同步（修复版）- 仅保留上传和下载 ====================
+=======
+        // ==================== 云端同步（仅上传）====================
+>>>>>>> 2ed447b51e301c99047ccc06f1a11ee12c807dc5
         function showCloudSync() {
             if (!hasPermission('云端同步')) {
                 alert('权限不足');
                 return;
             }
             
+<<<<<<< HEAD
             const lastSync = appData.cloudMeta?.lastSync ? new Date(appData.cloudMeta.lastSync).toLocaleString() : '从未同步';
             
+=======
+>>>>>>> 2ed447b51e301c99047ccc06f1a11ee12c807dc5
             document.getElementById('contentArea').innerHTML = `
                 <div class="content-card">
                     <h2 class="card-title">☁️ 云端同步</h2>
                     
                     <div class="info-box">
+<<<<<<< HEAD
                         <strong>📌 云端状态：</strong><br>
                         • 最后同步时间：${lastSync}<br>
                         • 本地数据版本：${appData.cloudMeta?.updated || 0}<br>
@@ -3042,10 +3050,26 @@
                     </div>
                     
                     <div id="cloudStatus" style="margin-top: 20px;"></div>
+=======
+                        <strong>📌 说明：</strong><br>
+                        • 选择包含JSON文件的文件夹<br>
+                        • 自动读取并上传所有数据到云端<br>
+                        • 上传后云端数据更新
+                    </div>
+                    
+                    <input type="file" id="cloudFolderInput" class="folder-input" webkitdirectory directory multiple onchange="handleCloudUpload(event)">
+                    <label for="cloudFolderInput" class="folder-label">
+                        📁 选择数据文件夹<br>
+                        <span class="small">将自动读取并上传所有JSON文件</span>
+                    </label>
+                    
+                    <div id="cloudFileList" class="file-list" style="display: none;"></div>
+>>>>>>> 2ed447b51e301c99047ccc06f1a11ee12c807dc5
                 </div>
             `;
         }
 
+<<<<<<< HEAD
         function showCloudUpload() {
             showModal('上传到云端', `
                 <div style="margin: 20px 0;">
@@ -3252,6 +3276,61 @@
                 if (statusDiv) {
                     statusDiv.innerHTML = `<div class="warning-box">❌ 云端连接失败：${error.message}</div>`;
                 }
+=======
+        async function handleCloudUpload(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+            
+            const fileList = document.getElementById('cloudFileList');
+            fileList.style.display = 'block';
+            fileList.innerHTML = '';
+            
+            const fileData = {};
+            let jsonCount = 0;
+            
+            for (let file of files) {
+                const fileName = file.name;
+                const dataKey = FILE_MAPPING[fileName];
+                
+                if (dataKey) {
+                    try {
+                        const text = await file.text();
+                        const data = JSON.parse(text);
+                        
+                        fileList.innerHTML += `<div class="file-item success">✅ ${fileName} - 已读取</div>`;
+                        
+                        if (fileName === 'user.json') {
+                            fileData.users = data.users || data;
+                        } else if (fileName === 'score.json') {
+                            fileData.scores = data.studentDefaultScore || data;
+                            fileData.groups = data.studentGroups || {};
+                        } else {
+                            fileData[dataKey] = data;
+                        }
+                        
+                        jsonCount++;
+                        
+                    } catch (e) {
+                        fileList.innerHTML += `<div class="file-item error">❌ ${fileName} - 读取失败: ${e.message}</div>`;
+                    }
+                }
+            }
+            
+            if (jsonCount === 0) {
+                fileList.innerHTML += `<div class="file-item error">❌ 没有找到有效的JSON文件</div>`;
+                return;
+            }
+            
+            fileList.innerHTML += `<div class="file-item">📤 正在上传 ${jsonCount} 个文件...</div>`;
+            
+            fileData.updated = 1;
+            
+            try {
+                await uploadToCloud(fileData);
+                fileList.innerHTML += `<div class="file-item success">✅ 上传成功！</div>`;
+            } catch (error) {
+                fileList.innerHTML += `<div class="file-item error">❌ 上传失败: ${error.message}</div>`;
+>>>>>>> 2ed447b51e301c99047ccc06f1a11ee12c807dc5
             }
         }
 
@@ -3571,6 +3650,7 @@
         }
 
         // ==================== 初始化 ====================
+<<<<<<< HEAD
         window.onload = async function() {
             // 显示加载界面
             const loadingScreen = document.getElementById('loadingScreen');
@@ -3769,6 +3849,14 @@
                 // 出错时使用默认数据
                 updateProgress(100, '加载失败，使用默认数据', '❌');
                 
+=======
+        window.onload = function() {
+            // 尝试从localStorage加载
+            const hasData = loadFromStorage();
+            
+            if (!hasData) {
+                // 没有数据，使用默认数据
+>>>>>>> 2ed447b51e301c99047ccc06f1a11ee12c807dc5
                 appData.users = { ...DEFAULT_DATA.users };
                 appData.scores = { ...DEFAULT_DATA.scores };
                 appData.groups = { ...DEFAULT_DATA.groups };
@@ -3779,6 +3867,7 @@
                 appData.emoji = DEFAULT_DATA.emoji;
                 
                 saveAllData();
+<<<<<<< HEAD
                 
                 setTimeout(() => {
                     loadingScreen.style.display = 'none';
@@ -3788,6 +3877,16 @@
                     alert('⚠️ 云端同步失败，已使用本地数据。错误：' + error.message);
                 }, 1000);
             }
+=======
+            }
+            
+            // 显示登录界面
+            setTimeout(() => {
+                document.getElementById('loadingScreen').style.display = 'none';
+                document.getElementById('loginScreen').style.display = 'block';
+                renderUserSelect();
+            }, 1000);
+>>>>>>> 2ed447b51e301c99047ccc06f1a11ee12c807dc5
         };
     </script>
 </body>
