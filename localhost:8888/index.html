@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudentOS 班级管理系统</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 加载界面 -->
+        <div class="loading-screen" id="loadingScreen">
+            <div class="loading-header">
+                <h1>🎓 StudentOS</h1>
+                <div class="subtitle">正在同步数据...</div>
+            </div>
+            
+            <div class="loading-animation" id="loadingAnimation">☁️</div>
+            
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+            </div>
+            
+            <div class="sync-status" id="syncStatus">
+                连接中...
+            </div>
+        </div>
+
+        <!-- 登录界面 -->
+        <div class="login-screen" id="loginScreen">
+            <div class="login-header">
+                <h1>🎓 StudentOS</h1>
+                <div class="subtitle">班级管理系统</div>
+            </div>
+            <div class="login-box">
+                <select class="user-select" id="userSelect">
+                    <option value="">请选择账号...</option>
+                </select>
+                <input type="password" class="password-input" id="password" placeholder="请输入密码">
+                <button class="login-btn" onclick="window.auth.handleLogin()">登录系统</button>
+            </div>
+        </div>
+
+        <!-- 主界面 -->
+        <div class="main-screen" id="mainScreen">
+            <div class="header">
+                <div class="user-info">
+                    <span class="user-avatar" id="userAvatar" onclick="window.account.showAvatarSelector()">👤</span>
+                    <div class="user-details">
+                        <div class="user-name" id="userDisplayName">加载中...</div>
+                        <div class="user-role" id="userRole">学生</div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <div class="cloud-status" id="cloudStatus">
+                        <span id="cloudIcon">☁️</span>
+                        <span id="cloudText">本地模式</span>
+                    </div>
+                    <div class="friday-badge" id="fridayBadge">⏰ 抽奖时间：周五下午</div>
+                </div>
+            </div>
+            
+            <div class="main-content">
+                <!-- 侧边栏菜单 -->
+                <div class="sidebar" id="sidebar"></div>
+                
+                <!-- 内容区域 -->
+                <div class="content-area" id="contentArea"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通用模态框 -->
+    <div class="modal" id="modal">
+        <div class="modal-content" id="modalContent">
+            <div class="modal-title" id="modalTitle"></div>
+            <div id="modalBody"></div>
+            <div class="modal-buttons" id="modalButtons"></div>
+        </div>
+    </div>
+
+    <!-- 加载脚本 - 注意正确的加载顺序 -->
+    <script src="js/utils.js"></script>
+    <script src="js/data.js"></script>
+    <script src="js/components/modal.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/pages/dashboard.js"></script>
+    <script src="js/pages/my_score.js"></script>
+    <script src="js/pages/score.js"></script>
+    <script src="js/pages/group.js"></script>
+    <script src="js/pages/rank.js"></script>
+    <script src="js/pages/daily_report.js"></script>
+    <script src="js/pages/gacha.js"></script>
+    <script src="js/pages/punishment.js"></script>
+    <script src="js/pages/gold.js"></script>
+    <script src="js/pages/logs.js"></script>
+    <script src="js/pages/cloud_sync.js"></script>
+    <script src="js/pages/backup.js"></script>
+    <script src="js/pages/account.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
