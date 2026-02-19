@@ -612,6 +612,39 @@
             border-radius: 15px;
             font-size: 0.8em;
         }
+        
+        /* 新增样式 */
+        .tab-container {
+            display: flex;
+            border-bottom: 2px solid #e2e8f0;
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-bottom: none;
+            margin-right: 5px;
+            border-radius: 8px 8px 0 0;
+        }
+        
+        .tab.active {
+            background: white;
+            border-bottom: 2px solid white;
+            margin-bottom: -2px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -772,12 +805,61 @@
                     username: "程煜堃 23",
                     password: "Mua52700!",
                     role: "root",
-                    display_name: "程煜堃",
+                    display_name: "程煜堃 Bilibili@七宝-Seven",
                     student_id: "23",
                     avatar: "😫"
+                },
+                "卢钰森 8": {
+                    username: "卢钰森 8",
+                    password: "threebody",
+                    role: "admin",
+                    display_name: "卢钰森",
+                    student_id: "8",
+                    avatar: "👤"
+                },
+                "周鸿翼 16": {
+                    username: "周鸿翼 16",
+                    password: "zhy16",
+                    role: "admin",
+                    display_name: "周鸿翼",
+                    student_id: "16",
+                    avatar: "👤"
+                },
+                "许皓峰 29": {
+                    username: "许皓峰 29",
+                    password: "xhf0316",
+                    role: "admin",
+                    display_name: "许皓峰",
+                    student_id: "29",
+                    avatar: "👤"
+                },
+                "费锦轩 41": {
+                    username: "费锦轩 41",
+                    password: "DTMFJX41",
+                    role: "admin",
+                    display_name: "费锦轩",
+                    student_id: "41",
+                    avatar: "👤"
+                },
+                "赵雨诺 50": {
+                    username: "赵雨诺 50",
+                    password: "ZhaoYuNuo50",
+                    role: "admin",
+                    display_name: "赵雨诺",
+                    student_id: "50",
+                    avatar: "👤"
+                },
+                "徐浩 24": {
+                    username: "徐浩 24",
+                    password: "XuHao24",
+                    role: "user",
+                    display_name: "迅风",
+                    student_id: "24",
+                    avatar: "🤓"
                 }
             },
             scores: {
+                "0": ["testStudent", 3e71],
                 "1": ["方梦圆", 117],
                 "2": ["姚伽悦", 148],
                 "3": ["方瑾涵", 122],
@@ -841,40 +923,51 @@
                 "有职位": ["2", "3", "4", "5", "8", "7", "6", "9", "11", "13", "14", "16", "17", "18", "21", "23", "22", "26", "28", "29", "30", "33", "37", "38", "39", "41", "45", "46", "48", "47", "50"]
             },
             rules: {
-                "作业完成": {"value": 2, "type": "加分"},
-                "作业未完成": {"value": -2, "type": "扣分"},
-                "值日优秀": {"value": 2, "type": "加分"},
-                "值日不合格": {"value": -2, "type": "扣分"},
-                "纪律良好": {"value": 2, "type": "加分"},
-                "违反纪律": {"value": -2, "type": "扣分"},
-                "不交平板": {"value": -6, "type": "扣分"},
-                "交错平板": {"value": -3, "type": "扣分"},
-                "平板1次": {"value": -1, "type": "扣分"},
-                "平板2次": {"value": -3, "type": "扣分"},
-                "课代表15/3月": {"value": 15, "type": "加分"}
+                "作业完成": {"value": 2, "column": "C", "type": "加分"},
+                "作业未完成": {"value": -2, "column": "D", "type": "扣分"},
+                "值日优秀": {"value": 2, "column": "E", "type": "加分"},
+                "值日不合格": {"value": -2, "column": "E", "type": "扣分"},
+                "纪律良好": {"value": 2, "column": "F", "type": "加分"},
+                "违反纪律": {"value": -2, "column": "F", "type": "扣分"},
+                "不交平板": {"value": -6, "column": "S", "type": "扣分"},
+                "交错平板": {"value": -3, "column": "S", "type": "扣分"},
+                "平板1次": {"value": -1, "column": "S", "type": "扣分"},
+                "平板2次": {"value": -3, "column": "S", "type": "扣分"},
+                "课代表15/3月": {"value": 15, "column": "S", "type": "加分"},
+                "no架凳子": {"value": -2, "column": "S", "type": "扣分"},
+                "活动获奖一等奖": {"value": 5, "column": "L", "type": "加分"},
+                "活动获奖二等奖": {"value": 4, "column": "M", "type": "加分"},
+                "考试单科第一": {"value": 5, "column": "O", "type": "加分"}
             },
             rewards: {
                 "SSR": [
                     {"name": "+50分", "type": "虚拟", "description": "+50学分", "probability": 5},
-                    {"name": "免作业通行证", "type": "特权", "description": "一次性抵消任意一门科目的作业", "probability": 5}
+                    {"name": "免作业通行证", "type": "特权", "description": "一次性抵消任意一门科目的作业", "probability": 5},
+                    {"name": "B站年度大会员体验卡", "type": "虚拟", "description": "老师的B站账号借你刷一周（在老师监督下）", "probability": 5}
                 ],
                 "SR": [
                     {"name": "+25分", "type": "虚拟", "description": "+25学分", "probability": 15},
-                    {"name": "免罪金牌", "type": "特权", "description": "抵消一次小失误带来的惩罚", "probability": 15}
+                    {"name": "免罪金牌", "type": "特权", "description": "抵消一次小失误带来的惩罚", "probability": 15},
+                    {"name": "座位指定王权", "type": "特权", "description": "下一周自选座位权力", "probability": 15}
                 ],
                 "R": [
                     {"name": "+15分", "type": "虚拟", "description": "+15学分", "probability": 30},
-                    {"name": "课间点歌权", "type": "特权", "description": "指定播放一首课间音乐", "probability": 30}
+                    {"name": "课间点歌权", "type": "特权", "description": "指定播放一首课间音乐", "probability": 30},
+                    {"name": "学霸文具包", "type": "实物", "description": "高颜值文具套装", "probability": 30}
                 ],
                 "N": [
                     {"name": "+2分", "type": "虚拟", "description": "+2学分", "probability": 5},
-                    {"name": "老师的肯定", "type": "体验", "description": "老师手写明信片寄语", "probability": 5}
+                    {"name": "老师的肯定", "type": "体验", "description": "老师手写明信片寄语", "probability": 5},
+                    {"name": "欧气喷雾", "type": "实物", "description": "一瓶品牌可乐", "probability": 5}
                 ]
             },
             punishments: {
+                "SP": [
+                    {"name": "班级成长日记", "description": "记录班级一周的成长点滴，制作成图文并茂的电子相册", "probability": 1, "score": [10, 8], "time": ["14d", "持续一周"]}
+                ],
                 "SSR": [
                     {"name": "第一次发B站", "description": "在程煜堃的B站账号发道歉视频", "probability": 1, "score": [20, 5], "time": ["15d", "5m"]},
-                    {"name": "编程初体验", "description": "用Python完成一个小程序", "probability": 2, "score": [10, 5], "time": ["20d", "不限"]}
+                    {"name": "编程初体验", "description": "用Python完成一个简单的小程序", "probability": 2, "score": [10, 5], "time": ["20d", "不限"]}
                 ],
                 "SR": [
                     {"name": "旧事重背", "description": "背诵《朝花夕拾》一篇", "probability": 10, "score": [10, -3], "time": ["8d", "20m"]}
@@ -889,10 +982,117 @@
                 ]
             },
             exchangeRate: {
-                score_to_gold: 0.1,
-                gold_to_score: 1.0
+                score_to_gold: 11.91913310805437,
+                gold_to_score: 0.0107428989499882,
+                last_updated: "2025-12-16 17:51:42"
             },
-            emoji: "😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚😋😛😝😜🤪🤨🧐🤓😎🥸🤩🥳😏😒😞😔😟😕🙁☹️😣😖😫😩🥺😢😭😤😠😡🤬🤯😳🥵🥶😱😨😰😥😓"
+            emoji: "😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘😗😙😚😋😛😝😜🤪🤨🧐🤓😎🥸🤩🥳😏😒😞😔😟😕🙁☹️😣😖😫😩🥺😢😭😤😠😡🤬🤯😳🥵🥶😱😨😰😥😓",
+            userPunishments: {
+                active: {
+                    "0": [],
+                    "23": []
+                },
+                completed: {
+                    "0": [
+                        {
+                            "id": "pun_20251102215618",
+                            "name": "课后提问",
+                            "description": "向老师提出2个有深度的学科问题",
+                            "rarity": "N",
+                            "time_limit": "2d",
+                            "task_duration": "5m",
+                            "success_gold": 20,
+                            "fail_gold": -10,
+                            "deadline": "2025-11-04T21:56:18.000Z",
+                            "draw_time": "2025-11-02T21:56:18.000Z",
+                            "status": "completed",
+                            "completion_time": "2025-11-02T22:14:45.000Z",
+                            "result": "成功完成",
+                            "final_gold": 20,
+                            "witness": "程煜堃",
+                            "witness_id": "23"
+                        }
+                    ],
+                    "23": [
+                        {
+                            "id": "pun_20251115123141",
+                            "name": "编程初体验",
+                            "description": "使用Python完成一个简单的小程序",
+                            "rarity": "SSR",
+                            "time_limit": "20d",
+                            "task_duration": "不限",
+                            "success_gold": 100,
+                            "fail_gold": 50,
+                            "deadline": "2025-12-05T12:31:41.000Z",
+                            "draw_time": "2025-11-15T12:31:41.000Z",
+                            "status": "completed",
+                            "completion_time": "2025-11-15T12:35:01.000Z",
+                            "result": "成功完成",
+                            "final_gold": 100,
+                            "witness": "testStudent",
+                            "witness_id": "0"
+                        }
+                    ]
+                }
+            },
+            gold: {
+                "1": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "2": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "3": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "4": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "5": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "6": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "7": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "8": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "9": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "10": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "11": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "12": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "13": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "14": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "15": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "16": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "17": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "18": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "19": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "20": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "21": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "22": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "23": { "amount": 20.5, "last_updated": "2025-11-15 12:26:24" },
+                "24": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "25": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "26": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "27": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "28": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "29": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "30": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "31": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "32": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "33": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "34": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "35": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "36": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "37": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "38": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "39": { "amount": 11, "last_updated": "2025-11-09 00:21:28" },
+                "40": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "41": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "42": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "43": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "44": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "45": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "46": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "47": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "48": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "49": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "50": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "51": { "amount": 10, "last_updated": "2025-11-09 00:21:28" },
+                "程煜堃 23": { "amount": 120.5, "last_updated": "2025-11-15 12:35:01" },
+                "0": { "amount": 1.21e48, "last_updated": "2025-11-26 12:03:24" }
+            },
+            dailyReport: {},
+            logs: [],
+            cloudMeta: { updated: 0, lastSync: null }
         };
 
         // ==================== 全局状态 ====================
@@ -930,15 +1130,16 @@
 
         function saveData(key) {
             const storageKey = STORAGE_KEYS[key.toUpperCase()];
-            if (storageKey) {
+            if (storageKey && appData[key] !== undefined) {
                 localStorage.setItem(storageKey, JSON.stringify(appData[key]));
             }
         }
 
         function saveAllData() {
             Object.keys(STORAGE_KEYS).forEach(key => {
-                if (appData[key.toLowerCase()] !== undefined) {
-                    localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(appData[key.toLowerCase()]));
+                const dataKey = key.toLowerCase();
+                if (appData[dataKey] !== undefined) {
+                    localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(appData[dataKey]));
                 }
             });
         }
@@ -1002,7 +1203,7 @@
             
             const permissions = {
                 user: ['我的分数', '排名管理', '学分抽奖', '惩罚管理', '金币系统'],
-                admin: ['分数管理', '分组管理', '排名管理', '数据备份', '学分抽奖', '惩罚管理', '金币系统', '我的分数', '每日汇报', '云端同步'],
+                admin: ['分数管理', '分组管理', '排名管理', '数据备份', '学分抽奖', '惩罚管理', '金币系统', '我的分数', '每日汇报', '云端同步', '操作日志'],
                 root: ['分数管理', '分组管理', '排名管理', '操作日志', '数据备份', '学分抽奖', '惩罚管理', '金币系统', '我的分数', '每日汇报', '云端同步']
             };
             
@@ -1368,40 +1569,101 @@
                 .filter(([id]) => id !== '0')
                 .sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
             
+            const rules = Object.entries(appData.rules || {});
+            
             document.getElementById('contentArea').innerHTML = `
                 <div class="content-card">
                     <h2 class="card-title">📊 分数管理</h2>
                     
-                    <div class="btn-grid">
-                        <button class="btn btn-primary" onclick="showScoreAddSingle()">➕ 单个加分</button>
-                        <button class="btn btn-primary" onclick="showScoreAddBatch()">🔢 批量加分</button>
-                        <button class="btn btn-primary" onclick="showScoreByReason()">🎯 原因加分</button>
-                        <button class="btn btn-primary" onclick="showScoreSet()">📝 设置分数</button>
+                    <div class="tab-container">
+                        <div class="tab active" onclick="showScoreTab('manage')">📝 分数操作</div>
+                        <div class="tab" onclick="showScoreTab('rules')">📋 积分规则</div>
+                        <div class="tab" onclick="showScoreTab('list')">📑 学生列表</div>
                     </div>
                     
-                    <div style="margin-top: 30px;">
-                        <input type="text" placeholder="搜索学生..." style="width: 100%; padding: 10px; margin-bottom: 20px; border: 2px solid #e2e8f0; border-radius: 8px;" 
-                               onkeyup="filterStudents(this.value)">
+                    <div id="scoreManageTab" class="tab-content active">
+                        <div class="btn-grid">
+                            <button class="btn btn-primary" onclick="showScoreAddSingle()">➕ 单个加分</button>
+                            <button class="btn btn-primary" onclick="showScoreAddBatch()">🔢 批量加分</button>
+                            <button class="btn btn-primary" onclick="showScoreByReason()">🎯 原因加分</button>
+                            <button class="btn btn-primary" onclick="showScoreSet()">📝 设置分数</button>
+                            <button class="btn btn-primary" onclick="showScoreGroupAdd()">👥 分组加分</button>
+                        </div>
                         
-                        <table class="data-table" id="scoreTable">
+                        <div style="margin-top: 30px;">
+                            <input type="text" placeholder="搜索学生..." style="width: 100%; padding: 10px; margin-bottom: 20px; border: 2px solid #e2e8f0; border-radius: 8px;" 
+                                   onkeyup="filterStudents(this.value)">
+                            
+                            <table class="data-table" id="scoreTable">
+                                <thead>
+                                    <tr>
+                                        <th>学号</th>
+                                        <th>姓名</th>
+                                        <th>分数</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${students.map(([id, [name, score]]) => `
+                                        <tr data-name="${name}">
+                                            <td>${id}</td>
+                                            <td>${name}</td>
+                                            <td>${score}</td>
+                                            <td>
+                                                <button class="btn btn-sm" onclick="quickAddScore('${id}', 2)">+2</button>
+                                                <button class="btn btn-sm" onclick="quickAddScore('${id}', -2)">-2</button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div id="scoreRulesTab" class="tab-content">
+                        <h3 style="margin-bottom: 15px;">📋 当前积分规则</h3>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>规则名称</th>
+                                    <th>分值</th>
+                                    <th>类型</th>
+                                    <th>Excel列</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rules.map(([name, rule]) => `
+                                    <tr>
+                                        <td>${name}</td>
+                                        <td style="color: ${rule.value > 0 ? '#48bb78' : '#f56565'}">${rule.value > 0 ? '+' : ''}${rule.value}</td>
+                                        <td>${rule.type}</td>
+                                        <td>${rule.column}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                        
+                        <div class="btn-grid" style="margin-top: 20px;">
+                            <button class="btn btn-primary" onclick="showAddRule()">➕ 添加规则</button>
+                            <button class="btn btn-danger" onclick="showDeleteRule()">🗑️ 删除规则</button>
+                        </div>
+                    </div>
+                    
+                    <div id="scoreListTab" class="tab-content">
+                        <table class="data-table">
                             <thead>
                                 <tr>
                                     <th>学号</th>
                                     <th>姓名</th>
                                     <th>分数</th>
-                                    <th>操作</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 ${students.map(([id, [name, score]]) => `
-                                    <tr data-name="${name}">
+                                    <tr>
                                         <td>${id}</td>
                                         <td>${name}</td>
                                         <td>${score}</td>
-                                        <td>
-                                            <button class="btn btn-sm" onclick="quickAddScore('${id}', 2)">+2</button>
-                                            <button class="btn btn-sm" onclick="quickAddScore('${id}', -2)">-2</button>
-                                        </td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -1409,6 +1671,144 @@
                     </div>
                 </div>
             `;
+        }
+
+        function showScoreTab(tabName) {
+            document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            
+            if (tabName === 'manage') {
+                document.querySelectorAll('.tab')[0].classList.add('active');
+                document.getElementById('scoreManageTab').classList.add('active');
+            } else if (tabName === 'rules') {
+                document.querySelectorAll('.tab')[1].classList.add('active');
+                document.getElementById('scoreRulesTab').classList.add('active');
+            } else if (tabName === 'list') {
+                document.querySelectorAll('.tab')[2].classList.add('active');
+                document.getElementById('scoreListTab').classList.add('active');
+            }
+        }
+
+        function showAddRule() {
+            showModal('添加积分规则', `
+                <div style="margin: 20px 0;">
+                    <label>规则名称：</label>
+                    <input type="text" id="ruleName" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;">
+                    
+                    <label>分值（正数加分，负数扣分）：</label>
+                    <input type="number" id="ruleValue" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;">
+                    
+                    <label>类型：</label>
+                    <select id="ruleType" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;">
+                        <option value="加分">加分</option>
+                        <option value="扣分">扣分</option>
+                    </select>
+                    
+                    <label>Excel列（C-V）：</label>
+                    <input type="text" id="ruleColumn" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;" placeholder="例如: C, D, E...">
+                </div>
+            `, [
+                { text: '取消', onclick: 'closeModal()' },
+                { text: '添加', onclick: 'handleAddRule()', className: 'btn-primary' }
+            ]);
+        }
+
+        function handleAddRule() {
+            const name = document.getElementById('ruleName').value.trim();
+            const value = parseFloat(document.getElementById('ruleValue').value);
+            const type = document.getElementById('ruleType').value;
+            const column = document.getElementById('ruleColumn').value.toUpperCase();
+            
+            if (!name || isNaN(value) || !column) {
+                alert('请填写完整信息');
+                return;
+            }
+            
+            appData.rules[name] = { value, type, column };
+            saveData('rules');
+            alert('规则添加成功');
+            closeModal();
+            showScoreManagement();
+        }
+
+        function showDeleteRule() {
+            const rules = Object.keys(appData.rules || {});
+            if (rules.length === 0) {
+                alert('暂无规则可删除');
+                return;
+            }
+            
+            showModal('删除规则', `
+                <div style="margin: 20px 0;">
+                    <label>选择要删除的规则：</label>
+                    <select id="deleteRuleSelect" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;">
+                        ${rules.map(name => `<option value="${name}">${name}</option>`).join('')}
+                    </select>
+                </div>
+            `, [
+                { text: '取消', onclick: 'closeModal()' },
+                { text: '删除', onclick: 'handleDeleteRule()', className: 'btn-danger' }
+            ]);
+        }
+
+        function handleDeleteRule() {
+            const name = document.getElementById('deleteRuleSelect').value;
+            if (confirm(`确定要删除规则"${name}"吗？`)) {
+                delete appData.rules[name];
+                saveData('rules');
+                alert('规则已删除');
+                closeModal();
+                showScoreManagement();
+            }
+        }
+
+        function showScoreGroupAdd() {
+            const groups = Object.keys(appData.groups || {});
+            if (groups.length === 0) {
+                alert('请先创建分组');
+                return;
+            }
+            
+            showModal('分组加分', `
+                <div style="margin: 20px 0;">
+                    <label>选择分组：</label>
+                    <select id="scoreGroupSelect" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;">
+                        ${groups.map(name => `<option value="${name}">${name}</option>`).join('')}
+                    </select>
+                    
+                    <label>加分/扣分数值：</label>
+                    <input type="number" id="groupScoreChange" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;">
+                    
+                    <label>原因（可选）：</label>
+                    <input type="text" id="groupScoreReason" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;">
+                </div>
+            `, [
+                { text: '取消', onclick: 'closeModal()' },
+                { text: '确认', onclick: 'handleGroupScore()', className: 'btn-primary' }
+            ]);
+        }
+
+        function handleGroupScore() {
+            const groupName = document.getElementById('scoreGroupSelect').value;
+            const change = parseFloat(document.getElementById('groupScoreChange').value);
+            const reason = document.getElementById('groupScoreReason').value || '分组操作';
+            
+            if (isNaN(change)) {
+                alert('请输入有效的分数');
+                return;
+            }
+            
+            const members = appData.groups[groupName] || [];
+            const validMembers = members.filter(id => appData.scores[id] && id !== '0');
+            
+            let success = 0;
+            validMembers.forEach(id => {
+                if (updateStudentScore(id, change, reason)) success++;
+            });
+            
+            alert(`操作成功！成功为 ${success} 名学生${change > 0 ? '加' : '减'}分`);
+            closeModal();
+            showScoreManagement();
         }
 
         function filterStudents(keyword) {
@@ -1682,6 +2082,7 @@
                         <button class="btn btn-primary" onclick="showGroupList()">📋 查看分组</button>
                         <button class="btn btn-primary" onclick="showGroupAll()">👥 全部详情</button>
                         <button class="btn btn-primary" onclick="showGroupScore()">🎯 分组加分</button>
+                        <button class="btn btn-danger" onclick="showGroupDelete()">🗑️ 删除分组</button>
                     </div>
                     
                     <div style="margin-top: 30px;">
@@ -1703,6 +2104,7 @@
                                     <th>分组名称</th>
                                     <th>成员数</th>
                                     <th>平均分</th>
+                                    <th>操作</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1716,6 +2118,9 @@
                                             <td>${name}</td>
                                             <td>${validMembers.length}</td>
                                             <td>${avgScore}</td>
+                                            <td>
+                                                <button class="btn btn-sm" onclick="viewGroupDetails('${name}')">查看</button>
+                                            </td>
                                         </tr>
                                     `;
                                 }).join('')}
@@ -1724,6 +2129,37 @@
                     </div>
                 </div>
             `;
+        }
+
+        function viewGroupDetails(groupName) {
+            const members = appData.groups[groupName] || [];
+            const validMembers = members.filter(id => appData.scores[id] && id !== '0');
+            
+            showModal(`分组详情 - ${groupName}`, `
+                <div style="max-height: 400px; overflow-y: auto;">
+                    <p><strong>成员列表 (${validMembers.length}人):</strong></p>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>学号</th>
+                                <th>姓名</th>
+                                <th>分数</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${validMembers.map(id => `
+                                <tr>
+                                    <td>${id}</td>
+                                    <td>${appData.scores[id][0]}</td>
+                                    <td>${appData.scores[id][1]}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `, [
+                { text: '关闭', onclick: 'closeModal()' }
+            ]);
         }
 
         function showGroupCreate() {
@@ -1758,6 +2194,37 @@
             showGroupManagement();
         }
 
+        function showGroupDelete() {
+            const groups = Object.keys(appData.groups || {});
+            if (groups.length === 0) {
+                alert('暂无分组');
+                return;
+            }
+            
+            showModal('删除分组', `
+                <div style="margin: 20px 0;">
+                    <label>选择要删除的分组：</label>
+                    <select id="deleteGroupSelect" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;">
+                        ${groups.map(name => `<option value="${name}">${name}</option>`).join('')}
+                    </select>
+                </div>
+            `, [
+                { text: '取消', onclick: 'closeModal()' },
+                { text: '删除', onclick: 'handleGroupDelete()', className: 'btn-danger' }
+            ]);
+        }
+
+        function handleGroupDelete() {
+            const name = document.getElementById('deleteGroupSelect').value;
+            if (confirm(`确定要删除分组"${name}"吗？`)) {
+                delete appData.groups[name];
+                saveData('groups');
+                alert('分组已删除');
+                closeModal();
+                showGroupManagement();
+            }
+        }
+
         function showGroupAddMember() {
             const groupNames = Object.keys(appData.groups || {});
             
@@ -1769,26 +2236,41 @@
             showModal('添加成员', `
                 <div style="margin: 20px 0;">
                     <label>选择分组：</label>
-                    <select id="addGroupSelect" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;">
+                    <select id="addGroupSelect" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 8px;" onchange="updateAddMemberList(this.value)">
                         ${groupNames.map(name => `<option value="${name}">${name}</option>`).join('')}
                     </select>
                     
-                    <label>选择学生：</label>
-                    <div style="max-height: 200px; overflow-y: auto; border: 1px solid #e2e8f0; padding: 10px; border-radius: 8px;">
-                        ${Object.entries(appData.scores || {}).filter(([id]) => id !== '0').map(([id, [name, score]]) => {
-                            const inGroup = appData.groups[groupNames[0]]?.includes(id);
-                            return `
-                                <label style="display: block; margin: 5px; ${inGroup ? 'opacity: 0.5;' : ''}">
-                                    <input type="checkbox" value="${id}" class="add-member" ${inGroup ? 'disabled' : ''}> ${id} - ${name} (${score}分) ${inGroup ? '(已在分组中)' : ''}
-                                </label>
-                            `;
-                        }).join('')}
-                    </div>
+                    <div id="addMembersList" style="margin-top: 20px;"></div>
                 </div>
             `, [
                 { text: '取消', onclick: 'closeModal()' },
                 { text: '添加', onclick: 'handleGroupAddMember()', className: 'btn-primary' }
             ]);
+            
+            setTimeout(() => updateAddMemberList(groupNames[0]), 100);
+        }
+
+        function updateAddMemberList(groupName) {
+            const members = appData.groups[groupName] || [];
+            
+            const students = Object.entries(appData.scores || {})
+                .filter(([id]) => id !== '0')
+                .map(([id, [name, score]]) => {
+                    const inGroup = members.includes(id);
+                    return `
+                        <label style="display: block; margin: 5px; ${inGroup ? 'opacity: 0.5;' : ''}">
+                            <input type="checkbox" value="${id}" class="add-member" ${inGroup ? 'disabled' : ''}> 
+                            ${id} - ${name} (${score}分) ${inGroup ? '(已在分组中)' : ''}
+                        </label>
+                    `;
+                }).join('');
+            
+            document.getElementById('addMembersList').innerHTML = `
+                <label>选择学生：</label>
+                <div style="max-height: 200px; overflow-y: auto; border: 1px solid #e2e8f0; padding: 10px; border-radius: 8px;">
+                    ${students || '<p>暂无学生可选</p>'}
+                </div>
+            `;
         }
 
         function handleGroupAddMember() {
@@ -1973,29 +2455,6 @@
             ]);
         }
 
-        function handleGroupScore() {
-            const groupName = document.getElementById('scoreGroupSelect').value;
-            const change = parseFloat(document.getElementById('groupScoreChange').value);
-            const reason = document.getElementById('groupScoreReason').value;
-            
-            if (isNaN(change)) {
-                alert('请输入有效的分数');
-                return;
-            }
-            
-            const members = appData.groups[groupName] || [];
-            const validMembers = members.filter(id => appData.scores[id] && id !== '0');
-            
-            let success = 0;
-            validMembers.forEach(id => {
-                if (updateStudentScore(id, change, reason)) success++;
-            });
-            
-            alert(`操作成功！成功为 ${success} 名学生${change > 0 ? '加' : '减'}分`);
-            closeModal();
-            showGroupManagement();
-        }
-
         // ==================== 排名管理 ====================
         function showRanking() {
             document.getElementById('contentArea').innerHTML = `
@@ -2006,6 +2465,7 @@
                         <button class="btn btn-primary" onclick="showIndividualRanking()">👤 个人排名</button>
                         <button class="btn btn-primary" onclick="showGroupRanking()">👥 分组排名</button>
                         <button class="btn btn-primary" onclick="showGroupMemberRanking()">🔍 组内排名</button>
+                        <button class="btn btn-primary" onclick="showScoreDistribution()">📊 分数分布</button>
                     </div>
                     
                     <div style="margin-top: 30px;">
@@ -2178,6 +2638,52 @@
             `;
         }
 
+        function showScoreDistribution() {
+            const scores = Object.entries(appData.scores || {})
+                .filter(([id]) => id !== '0')
+                .map(([, [, score]]) => score);
+            
+            const ranges = [
+                { min: 0, max: 60, label: '0-60分' },
+                { min: 60, max: 80, label: '60-80分' },
+                { min: 80, max: 100, label: '80-100分' },
+                { min: 100, max: 120, label: '100-120分' },
+                { min: 120, max: 140, label: '120-140分' },
+                { min: 140, max: 160, label: '140-160分' },
+                { min: 160, max: 180, label: '160-180分' },
+                { min: 180, max: 200, label: '180-200分' },
+                { min: 200, max: Infinity, label: '200分以上' }
+            ];
+            
+            const distribution = ranges.map(range => ({
+                ...range,
+                count: scores.filter(s => s >= range.min && s < range.max).length
+            }));
+            
+            const maxCount = Math.max(...distribution.map(d => d.count));
+            
+            showModal('分数分布统计', `
+                <div style="padding: 10px;">
+                    <p><strong>📊 分数分布统计（共${scores.length}人）</strong></p>
+                    ${distribution.map(d => `
+                        <div style="margin: 10px 0;">
+                            <div style="display: flex; align-items: center;">
+                                <span style="width: 80px;">${d.label}</span>
+                                <span style="width: 40px;">${d.count}人</span>
+                                <div style="flex: 1; height: 20px; background: #edf2f7; border-radius: 10px; margin-left: 10px;">
+                                    <div style="height: 100%; width: ${(d.count / maxCount) * 100}%; background: linear-gradient(90deg, #667eea, #764ba2); border-radius: 10px;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                    
+                    <p style="margin-top: 20px; color: #718096;">📈 平均分: ${(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)}分</p>
+                </div>
+            `, [
+                { text: '关闭', onclick: 'closeModal()' }
+            ]);
+        }
+
         // ==================== 每日汇报 ====================
         function showDailyReport() {
             if (!hasPermission('每日汇报')) {
@@ -2214,6 +2720,7 @@
                     <div class="btn-grid">
                         <button class="btn btn-primary" onclick="selectAllReport()">✅ 全选今日汇报</button>
                         <button class="btn btn-primary" onclick="clearAllReport()">🔄 清空今日汇报</button>
+                        <button class="btn btn-primary" onclick="showReportHistory()">📊 历史记录</button>
                     </div>
                     
                     <div style="margin-top: 30px; overflow-x: auto;">
@@ -2259,6 +2766,44 @@
                     </div>
                 </div>
             `;
+        }
+
+        function showReportHistory() {
+            const dates = Object.keys(appData.dailyReport || {}).sort().reverse();
+            
+            showModal('汇报历史记录', `
+                <div style="max-height: 400px; overflow-y: auto;">
+                    ${dates.map(date => `
+                        <div style="margin: 15px 0; padding: 15px; background: #f7fafc; border-radius: 10px;">
+                            <h4>📅 ${date}</h4>
+                            <p>已汇报人数: ${appData.dailyReport[date]?.length || 0}人</p>
+                            <button class="btn btn-sm" onclick="viewReportDetail('${date}')">查看详情</button>
+                        </div>
+                    `).join('')}
+                    ${dates.length === 0 ? '<p style="color: #718096;">暂无历史记录</p>' : ''}
+                </div>
+            `, [
+                { text: '关闭', onclick: 'closeModal()' }
+            ]);
+        }
+
+        function viewReportDetail(date) {
+            const reported = appData.dailyReport[date] || [];
+            const students = reported.map(id => {
+                const student = appData.scores[id];
+                return student ? `${student[0]} (${id})` : id;
+            }).join(', ');
+            
+            showModal(`汇报详情 - ${date}`, `
+                <div>
+                    <p><strong>已汇报学生 (${reported.length}人):</strong></p>
+                    <p style="background: #f7fafc; padding: 15px; border-radius: 8px; max-height: 300px; overflow-y: auto;">
+                        ${students || '暂无记录'}
+                    </p>
+                </div>
+            `, [
+                { text: '关闭', onclick: 'closeModal()' }
+            ]);
         }
 
         function toggleReport(studentId) {
@@ -2324,6 +2869,7 @@
             
             const studentId = currentUser.student_id;
             const gold = getStudentGold(studentId);
+            const score = getStudentScore(studentId);
             
             document.getElementById('contentArea').innerHTML = `
                 <div class="content-card">
@@ -2333,6 +2879,10 @@
                         <div class="stat-card">
                             <div class="stat-value">${gold}</div>
                             <div class="stat-label">我的金币</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${score}</div>
+                            <div class="stat-label">我的学分</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-value">160</div>
@@ -2364,6 +2914,11 @@
                         </button>
                     </div>
                     
+                    <div class="btn-grid" style="margin-top: 10px;">
+                        <button class="btn" onclick="showGachaHistory()">📋 抽奖记录</button>
+                        <button class="btn" onclick="showRewardPool()">🎁 奖励预览</button>
+                    </div>
+                    
                     <div style="margin-top: 30px;">
                         <h3>📋 奖励预览</h3>
                         <div class="reward-grid">
@@ -2381,6 +2936,57 @@
                     </div>
                 </div>
             `;
+        }
+
+        function showGachaHistory() {
+            const studentId = currentUser.student_id;
+            const logs = (appData.logs || []).filter(log => 
+                log.student_id === studentId && 
+                (log.action === '抽奖消耗' || log.action === '十连抽消耗')
+            );
+            
+            showModal('抽奖记录', `
+                <div style="max-height: 400px; overflow-y: auto;">
+                    ${logs.map(log => `
+                        <div style="padding: 15px; margin: 10px 0; background: #f7fafc; border-radius: 8px;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>📅 ${log.timestamp}</span>
+                                <span style="color: #f56565;">${log.score_change}金币</span>
+                            </div>
+                            <div style="margin-top: 5px;">${log.action}: ${log.reason || ''}</div>
+                        </div>
+                    `).join('')}
+                    ${logs.length === 0 ? '<p style="color: #718096;">暂无抽奖记录</p>' : ''}
+                </div>
+            `, [
+                { text: '关闭', onclick: 'closeModal()' }
+            ]);
+        }
+
+        function showRewardPool() {
+            showModal('完整奖励列表', `
+                <div style="max-height: 400px; overflow-y: auto;">
+                    ${Object.entries(appData.rewards || {}).map(([rarity, rewards]) => `
+                        <h4 style="margin-top: 15px;">${rarity} 稀有度</h4>
+                        ${rewards.map(reward => `
+                            <div style="padding: 10px; margin: 5px 0; background: #f7fafc; border-radius: 8px;">
+                                <strong>${reward.name}</strong> (${reward.probability}%)
+                                <p style="color: #718096; margin-top: 5px;">${reward.description}</p>
+                            </div>
+                        `).join('')}
+                    `).join('')}
+                    
+                    <h4 style="margin-top: 20px;">🎁 隐藏奖励</h4>
+                    ${(appData.rewards.hidden_rewards || []).map(reward => `
+                        <div style="padding: 10px; margin: 5px 0; background: #fef3c7; border-radius: 8px;">
+                            <strong>${reward.name}</strong> (${reward.probability}%)
+                            <p style="color: #718096; margin-top: 5px;">${reward.description}</p>
+                        </div>
+                    `).join('') || '<p>暂无隐藏奖励</p>'}
+                </div>
+            `, [
+                { text: '关闭', onclick: 'closeModal()' }
+            ]);
         }
 
         function handleSingleGacha() {
@@ -2405,6 +3011,8 @@
                     updateStudentScore(studentId, score, `抽奖获得: ${reward.name}`);
                 }
             }
+            
+            addLog('抽奖消耗', studentId, -160, getStudentGold(studentId), `获得: ${reward.name}`);
             
             showModal('抽奖结果', `
                 <div style="text-align: center; padding: 20px;">
@@ -2452,6 +3060,8 @@
                 }
             });
             
+            addLog('十连抽消耗', studentId, -1600, getStudentGold(studentId), `获得${rewards.length}个奖励`);
+            
             showModal('十连抽结果', `
                 <div style="padding: 20px;">
                     <h4 style="margin-bottom: 15px;">📊 稀有度统计</h4>
@@ -2479,14 +3089,25 @@
         function drawReward() {
             const rewards = [];
             Object.entries(appData.rewards || {}).forEach(([rarity, list]) => {
-                (list || []).forEach(reward => {
-                    for (let i = 0; i < (reward.probability || 1); i++) {
-                        rewards.push({ ...reward, rarity });
-                    }
-                });
+                if (Array.isArray(list)) {
+                    (list || []).forEach(reward => {
+                        for (let i = 0; i < (reward.probability || 1); i++) {
+                            rewards.push({ ...reward, rarity });
+                        }
+                    });
+                }
             });
             
-            return rewards[Math.floor(Math.random() * rewards.length)] || { name: '谢谢参与', type: '虚拟', description: '下次好运！', rarity: 'N' };
+            // 添加隐藏奖励
+            const hiddenRewards = appData.rewards.hidden_rewards || [];
+            hiddenRewards.forEach(reward => {
+                for (let i = 0; i < (reward.probability || 1); i++) {
+                    rewards.push({ ...reward, rarity: 'SP' });
+                }
+            });
+            
+            if (rewards.length === 0) return { name: '谢谢参与', type: '虚拟', description: '下次好运！', rarity: 'N' };
+            return rewards[Math.floor(Math.random() * rewards.length)];
         }
 
         // ==================== 惩罚管理 ====================
@@ -2499,6 +3120,7 @@
             const studentId = currentUser.student_id;
             const score = getStudentScore(studentId);
             const activePuns = (appData.userPunishments?.active?.[studentId]) || [];
+            const completedPuns = (appData.userPunishments?.completed?.[studentId]) || [];
             
             document.getElementById('contentArea').innerHTML = `
                 <div class="content-card">
@@ -2512,6 +3134,10 @@
                         <div class="stat-card">
                             <div class="stat-value">${activePuns.length}</div>
                             <div class="stat-label">进行中</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${completedPuns.length}</div>
+                            <div class="stat-label">已完成</div>
                         </div>
                     </div>
                     
@@ -2534,6 +3160,9 @@
                         <button class="btn btn-primary" onclick="showCompletePunishment()">
                             ✅ 完成惩罚
                         </button>
+                        <button class="btn btn-primary" onclick="showPunishmentPool()">
+                            📚 惩罚池
+                        </button>
                     </div>
                     
                     ${activePuns.length > 0 ? `
@@ -2549,7 +3178,7 @@
                                 <div style="padding: 15px; margin: 10px 0; background: #f7fafc; border-radius: 10px;">
                                     <div style="display: flex; justify-content: space-between;">
                                         <strong>${pun.name || ''}</strong>
-                                        <span>${pun.rarity || ''}</span>
+                                        <span class="reward-rarity-${pun.rarity}" style="padding: 2px 8px; border-radius: 12px;">${pun.rarity || ''}</span>
                                     </div>
                                     <p style="margin: 10px 0; color: #718096;">${pun.description || ''}</p>
                                     <p>⏰ 剩余时间: ${days > 0 ? days + '天' : ''} ${hours}小时</p>
@@ -2560,6 +3189,28 @@
                     ` : ''}
                 </div>
             `;
+        }
+
+        function showPunishmentPool() {
+            const punishments = appData.punishments || {};
+            
+            showModal('惩罚池', `
+                <div style="max-height: 400px; overflow-y: auto;">
+                    ${Object.entries(punishments).map(([rarity, list]) => `
+                        <h4 style="margin-top: 15px;">${rarity} 稀有度</h4>
+                        ${list.map(pun => `
+                            <div style="padding: 10px; margin: 5px 0; background: #f7fafc; border-radius: 8px;">
+                                <strong>${pun.name}</strong> (概率: ${pun.probability}%)
+                                <p style="color: #718096; margin-top: 5px;">${pun.description}</p>
+                                <p>⏰ 时限: ${pun.time[0]} | 任务时长: ${pun.time[1]}</p>
+                                <p>💰 成功: +${pun.score[0] * 10}金币 | 失败: ${pun.score[1] * 10}金币</p>
+                            </div>
+                        `).join('')}
+                    `).join('')}
+                </div>
+            `, [
+                { text: '关闭', onclick: 'closeModal()' }
+            ]);
         }
 
         function handleDrawPunishment() {
@@ -2616,11 +3267,13 @@
             appData.userPunishments.active[studentId].push(newPun);
             saveData('userPunishments');
             
+            addLog('抽取惩罚', studentId, 0, score, `抽到: ${punishment.name}`);
+            
             showModal('抽取结果', `
                 <div style="text-align: center;">
                     <h3 style="color: #667eea; margin-bottom: 20px;">🎯 抽到惩罚!</h3>
                     
-                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px;">
+                    <div class="reward-card reward-rarity-${punishment.rarity}" style="padding: 20px; border-radius: 10px;">
                         <div style="font-size: 1.3em; margin-bottom: 10px;">${punishment.name || ''}</div>
                         <div>${punishment.description || ''}</div>
                     </div>
@@ -2645,13 +3298,13 @@
             const completed = (appData.userPunishments?.completed?.[studentId]) || [];
             
             showModal('我的惩罚', `
-                <div>
+                <div style="max-height: 400px; overflow-y: auto;">
                     <h4>📋 进行中的惩罚 (${active.length})</h4>
                     ${active.map(pun => `
                         <div style="padding: 10px; margin: 10px 0; background: #f7fafc; border-radius: 8px;">
-                            <strong>${pun.name || ''}</strong> (${pun.rarity || ''})
+                            <strong>${pun.name || ''}</strong> <span class="reward-rarity-${pun.rarity}" style="padding: 2px 8px; border-radius: 12px;">${pun.rarity || ''}</span>
                             <p style="font-size: 0.9em; color: #718096;">${pun.description || ''}</p>
-                            <p>截止: ${new Date(pun.deadline).toLocaleDateString()}</p>
+                            <p>截止: ${new Date(pun.deadline).toLocaleString()}</p>
                         </div>
                     `).join('') || '<p style="color: #718096;">暂无进行中的惩罚</p>'}
                     
@@ -2745,6 +3398,7 @@
             appData.userPunishments.active[studentId] = active;
             
             saveData('userPunishments');
+            addLog('完成惩罚', studentId, 0, getStudentScore(studentId), `惩罚: ${pun.name}, 结果: ${result}, 金币: ${finalGold}`);
             
             alert(`惩罚完成！获得 ${finalGold} 金币`);
             closeModal();
@@ -2779,8 +3433,9 @@
                     
                     <div style="background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%); padding: 20px; border-radius: 10px; color: white; margin: 20px 0;">
                         <h3>📈 今日汇率</h3>
-                        <p style="font-size: 1.2em; margin: 10px 0;">学分 → 金币: 1 : ${appData.exchangeRate.score_to_gold || '0.1'}</p>
-                        <p style="font-size: 1.2em; margin: 10px 0;">金币 → 学分: 1 : ${appData.exchangeRate.gold_to_score || '1.0'}</p>
+                        <p style="font-size: 1.2em; margin: 10px 0;">学分 → 金币: 1 : ${appData.exchangeRate.score_to_gold?.toFixed(4) || '0.1000'}</p>
+                        <p style="font-size: 1.2em; margin: 10px 0;">金币 → 学分: 1 : ${appData.exchangeRate.gold_to_score?.toFixed(4) || '1.0000'}</p>
+                        <p style="font-size: 0.9em;">最后更新: ${appData.exchangeRate.last_updated || '未知'}</p>
                     </div>
                     
                     <div class="btn-grid">
@@ -2788,9 +3443,75 @@
                         <button class="btn btn-primary" onclick="showGoldToScore()">🔄 金币兑换学分</button>
                         <button class="btn btn-primary" onclick="showGoldTasks()">🎯 金币任务</button>
                         <button class="btn btn-primary" onclick="showGoldHistory()">📋 金币历史</button>
+                        <button class="btn btn-primary" onclick="showGoldRanking()">🏆 金币排名</button>
+                    </div>
+                    
+                    <div style="margin-top: 30px;">
+                        <h3>📊 金币排行榜</h3>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>排名</th>
+                                    <th>姓名</th>
+                                    <th>金币</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${getGoldRanking(10).map((item, index) => `
+                                    <tr ${item.id === studentId ? 'style="background: #fef3c7;"' : ''}>
+                                        <td>${index + 1}</td>
+                                        <td>${item.name}</td>
+                                        <td>${item.gold}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             `;
+        }
+
+        function getGoldRanking(limit = 999) {
+            const rankings = [];
+            Object.entries(appData.gold || {}).forEach(([id, data]) => {
+                if (id !== '0' && appData.scores[id]) {
+                    rankings.push({
+                        id,
+                        name: appData.scores[id][0],
+                        gold: data.amount || 0
+                    });
+                }
+            });
+            return rankings.sort((a, b) => b.gold - a.gold).slice(0, limit);
+        }
+
+        function showGoldRanking() {
+            const rankings = getGoldRanking();
+            
+            showModal('金币排行榜', `
+                <div style="max-height: 400px; overflow-y: auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>排名</th>
+                                <th>姓名</th>
+                                <th>金币</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rankings.map((item, index) => `
+                                <tr ${item.id === currentUser.student_id ? 'style="background: #fef3c7;"' : ''}>
+                                    <td>${index + 1}</td>
+                                    <td>${item.name}</td>
+                                    <td>${item.gold}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `, [
+                { text: '关闭', onclick: 'closeModal()' }
+            ]);
         }
 
         function showScoreToGold() {
@@ -2844,6 +3565,9 @@
             
             updateStudentScore(studentId, -score, `兑换金币 ${gold.toFixed(2)}`);
             updateStudentGold(studentId, gold);
+            
+            // 更新汇率（随机波动）
+            updateExchangeRate();
             
             alert(`兑换成功！获得 ${gold.toFixed(2)} 金币`);
             closeModal();
@@ -2902,9 +3626,21 @@
             updateStudentGold(studentId, -gold);
             updateStudentScore(studentId, score, `用 ${gold} 金币兑换`);
             
+            // 更新汇率（随机波动）
+            updateExchangeRate();
+            
             alert(`兑换成功！获得 ${score.toFixed(2)} 学分`);
             closeModal();
             showGoldSystem();
+        }
+
+        function updateExchangeRate() {
+            const rate = appData.exchangeRate;
+            // 随机波动 ±5%
+            rate.score_to_gold = rate.score_to_gold * (0.95 + Math.random() * 0.1);
+            rate.gold_to_score = rate.gold_to_score * (0.95 + Math.random() * 0.1);
+            rate.last_updated = formatDate();
+            saveData('exchangeRate');
         }
 
         function showGoldTasks() {
@@ -2938,13 +3674,14 @@
             
             showModal('金币历史', `
                 <div style="padding: 20px;">
-                    <p><strong>当前金币:</strong> ${goldData.amount}</p>
+                    <p><strong>当前金币:</strong> ${goldData.amount.toFixed(2)}</p>
                     <p><strong>最后更新:</strong> ${goldData.last_updated ? new Date(goldData.last_updated).toLocaleString() : ''}</p>
                     
                     <div style="margin-top: 20px;">
                         <p><strong>📈 汇率信息</strong></p>
-                        <p>学分 → 金币: 1 : ${appData.exchangeRate.score_to_gold || '0.1'}</p>
-                        <p>金币 → 学分: 1 : ${appData.exchangeRate.gold_to_score || '1.0'}</p>
+                        <p>学分 → 金币: 1 : ${appData.exchangeRate.score_to_gold?.toFixed(4) || '0.1000'}</p>
+                        <p>金币 → 学分: 1 : ${appData.exchangeRate.gold_to_score?.toFixed(4) || '1.0000'}</p>
+                        <p>最后更新: ${appData.exchangeRate.last_updated || '未知'}</p>
                     </div>
                     
                     <p style="margin-top: 20px; color: #718096;">💡 汇率会每日波动，请把握兑换时机！</p>
@@ -2970,6 +3707,11 @@
                                onkeyup="filterLogs(this.value)">
                     </div>
                     
+                    <div class="btn-grid">
+                        <button class="btn btn-primary" onclick="exportLogs()">📤 导出日志</button>
+                        <button class="btn btn-primary" onclick="clearLogs()">🗑️ 清空日志</button>
+                    </div>
+                    
                     <div id="logsList" style="max-height: 500px; overflow-y: auto;">
                         ${(appData.logs || []).map(log => `
                             <div class="log-item" data-content="${log.student_name || ''} ${log.action || ''} ${log.reason || ''}" style="padding: 15px; margin: 10px 0; background: #f7fafc; border-radius: 8px;">
@@ -2993,6 +3735,26 @@
             `;
         }
 
+        function exportLogs() {
+            const logs = appData.logs || [];
+            const dataStr = JSON.stringify(logs, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `logs_${formatDate().replace(/[: ]/g, '_')}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function clearLogs() {
+            if (confirm('确定要清空所有操作日志吗？')) {
+                appData.logs = [];
+                saveData('logs');
+                showLogs();
+            }
+        }
+
         function filterLogs(keyword) {
             const logs = document.querySelectorAll('.log-item');
             logs.forEach(log => {
@@ -3001,43 +3763,41 @@
             });
         }
 
-<<<<<<< HEAD
-        // ==================== 云端同步（修复版）- 仅保留上传和下载 ====================
-=======
-        // ==================== 云端同步（仅上传）====================
->>>>>>> 2ed447b51e301c99047ccc06f1a11ee12c807dc5
+        // ==================== 云端同步（修复版） ====================
         function showCloudSync() {
             if (!hasPermission('云端同步')) {
                 alert('权限不足');
                 return;
             }
             
-<<<<<<< HEAD
             const lastSync = appData.cloudMeta?.lastSync ? new Date(appData.cloudMeta.lastSync).toLocaleString() : '从未同步';
+            const isConfigured = CLOUD_CONFIG.binId && CLOUD_CONFIG.masterKey;
             
-=======
->>>>>>> 2ed447b51e301c99047ccc06f1a11ee12c807dc5
             document.getElementById('contentArea').innerHTML = `
                 <div class="content-card">
                     <h2 class="card-title">☁️ 云端同步</h2>
                     
                     <div class="info-box">
-<<<<<<< HEAD
                         <strong>📌 云端状态：</strong><br>
                         • 最后同步时间：${lastSync}<br>
                         • 本地数据版本：${appData.cloudMeta?.updated || 0}<br>
-                        • 同步模式：上传/下载
+                        • 同步模式：JSONBin<br>
+                        • 配置状态：${isConfigured ? '✅ 已配置' : '❌ 未配置'}<br>
+                        • Bin ID: ${CLOUD_CONFIG.binId}
                     </div>
                     
                     <div class="btn-grid">
-                        <button class="btn btn-primary" onclick="showCloudUpload()">
+                        <button class="btn btn-primary" onclick="showCloudUpload()" ${!isConfigured ? 'disabled' : ''}>
                             📤 上传到云端
                         </button>
-                        <button class="btn btn-primary" onclick="showCloudDownload()">
+                        <button class="btn btn-primary" onclick="showCloudDownload()" ${!isConfigured ? 'disabled' : ''}>
                             📥 从云端下载
                         </button>
-                        <button class="btn btn-primary" onclick="testCloudConnection()">
+                        <button class="btn btn-primary" onclick="testCloudConnection()" ${!isConfigured ? 'disabled' : ''}>
                             📡 测试连接
+                        </button>
+                        <button class="btn btn-primary" onclick="showCloudConfig()">
+                            ⚙️ 重新配置
                         </button>
                     </div>
                     
@@ -3046,30 +3806,36 @@
                         <ul style="margin-top: 10px; margin-left: 20px;">
                             <li>上传会覆盖云端数据</li>
                             <li>下载会覆盖本地数据</li>
+                            <li>建议定期备份重要数据</li>
                         </ul>
                     </div>
                     
                     <div id="cloudStatus" style="margin-top: 20px;"></div>
-=======
-                        <strong>📌 说明：</strong><br>
-                        • 选择包含JSON文件的文件夹<br>
-                        • 自动读取并上传所有数据到云端<br>
-                        • 上传后云端数据更新
-                    </div>
-                    
-                    <input type="file" id="cloudFolderInput" class="folder-input" webkitdirectory directory multiple onchange="handleCloudUpload(event)">
-                    <label for="cloudFolderInput" class="folder-label">
-                        📁 选择数据文件夹<br>
-                        <span class="small">将自动读取并上传所有JSON文件</span>
-                    </label>
-                    
-                    <div id="cloudFileList" class="file-list" style="display: none;"></div>
->>>>>>> 2ed447b51e301c99047ccc06f1a11ee12c807dc5
                 </div>
             `;
         }
 
-<<<<<<< HEAD
+        function showCloudConfig() {
+            showModal('云端配置', `
+                <div style="margin: 20px 0;">
+                    <p>当前配置的 Bin ID:</p>
+                    <p style="background: #f7fafc; padding: 10px; border-radius: 8px; font-family: monospace;">${CLOUD_CONFIG.binId}</p>
+                    
+                    <p>如需修改配置，请直接修改代码中的 CLOUD_CONFIG 变量。</p>
+                    
+                    <div class="info-box">
+                        <strong>如何获取 Bin ID?</strong><br>
+                        1. 访问 https://jsonbin.io/<br>
+                        2. 注册/登录账号<br>
+                        3. 创建新的 Bin<br>
+                        4. 复制 Bin ID 和 Master Key
+                    </div>
+                </div>
+            `, [
+                { text: '关闭', onclick: 'closeModal()' }
+            ]);
+        }
+
         function showCloudUpload() {
             showModal('上传到云端', `
                 <div style="margin: 20px 0;">
@@ -3131,7 +3897,8 @@
                         updated: (appData.cloudMeta?.updated || 0) + 1,
                         lastSync: new Date().toISOString(),
                         version: '1.0'
-                    }
+                    },
+                    timestamp: new Date().toISOString()
                 };
                 
                 // 上传到云端
@@ -3152,6 +3919,16 @@
                 }
                 
                 alert('✅ 数据上传成功！');
+                
+                // 更新云端状态显示
+                const cloudStatus = document.getElementById('cloudStatus');
+                const cloudIcon = document.getElementById('cloudIcon');
+                const cloudText = document.getElementById('cloudText');
+                if (cloudStatus) {
+                    cloudIcon.textContent = '☁️✅';
+                    cloudText.textContent = '云端已同步';
+                    cloudStatus.className = 'cloud-status online';
+                }
                 
             } catch (error) {
                 console.error('上传失败:', error);
@@ -3276,61 +4053,6 @@
                 if (statusDiv) {
                     statusDiv.innerHTML = `<div class="warning-box">❌ 云端连接失败：${error.message}</div>`;
                 }
-=======
-        async function handleCloudUpload(event) {
-            const files = event.target.files;
-            if (!files || files.length === 0) return;
-            
-            const fileList = document.getElementById('cloudFileList');
-            fileList.style.display = 'block';
-            fileList.innerHTML = '';
-            
-            const fileData = {};
-            let jsonCount = 0;
-            
-            for (let file of files) {
-                const fileName = file.name;
-                const dataKey = FILE_MAPPING[fileName];
-                
-                if (dataKey) {
-                    try {
-                        const text = await file.text();
-                        const data = JSON.parse(text);
-                        
-                        fileList.innerHTML += `<div class="file-item success">✅ ${fileName} - 已读取</div>`;
-                        
-                        if (fileName === 'user.json') {
-                            fileData.users = data.users || data;
-                        } else if (fileName === 'score.json') {
-                            fileData.scores = data.studentDefaultScore || data;
-                            fileData.groups = data.studentGroups || {};
-                        } else {
-                            fileData[dataKey] = data;
-                        }
-                        
-                        jsonCount++;
-                        
-                    } catch (e) {
-                        fileList.innerHTML += `<div class="file-item error">❌ ${fileName} - 读取失败: ${e.message}</div>`;
-                    }
-                }
-            }
-            
-            if (jsonCount === 0) {
-                fileList.innerHTML += `<div class="file-item error">❌ 没有找到有效的JSON文件</div>`;
-                return;
-            }
-            
-            fileList.innerHTML += `<div class="file-item">📤 正在上传 ${jsonCount} 个文件...</div>`;
-            
-            fileData.updated = 1;
-            
-            try {
-                await uploadToCloud(fileData);
-                fileList.innerHTML += `<div class="file-item success">✅ 上传成功！</div>`;
-            } catch (error) {
-                fileList.innerHTML += `<div class="file-item error">❌ 上传失败: ${error.message}</div>`;
->>>>>>> 2ed447b51e301c99047ccc06f1a11ee12c807dc5
             }
         }
 
@@ -3349,6 +4071,7 @@
                         <button class="btn btn-primary" onclick="exportData()">📤 导出数据</button>
                         <button class="btn btn-primary" onclick="importData()">📂 导入数据</button>
                         <button class="btn btn-primary" onclick="resetToDefault()">🔄 恢复默认</button>
+                        <button class="btn btn-primary" onclick="syncToExcel()">📊 同步到Excel</button>
                     </div>
                     
                     <div class="stats-grid" style="margin-top: 30px;">
@@ -3365,8 +4088,19 @@
                             <div class="stat-label">学生数</div>
                         </div>
                     </div>
+                    
+                    <div style="margin-top: 30px;">
+                        <h3>📋 备份文件列表</h3>
+                        <div id="backupList">
+                            <p style="color: #718096;">请在浏览器控制台查看 localStorage 数据</p>
+                        </div>
+                    </div>
                 </div>
             `;
+        }
+
+        function syncToExcel() {
+            alert('Excel同步功能需要与后端配合使用，当前版本仅支持JSON数据导出。');
         }
 
         function exportData() {
@@ -3396,9 +4130,10 @@
                         const imported = JSON.parse(e.target.result);
                         let count = 0;
                         Object.keys(STORAGE_KEYS).forEach(key => {
+                            const dataKey = key.toLowerCase();
                             if (imported[key]) {
                                 localStorage.setItem(STORAGE_KEYS[key], JSON.stringify(imported[key]));
-                                appData[key.toLowerCase()] = imported[key];
+                                appData[dataKey] = imported[key];
                                 count++;
                             }
                         });
@@ -3423,6 +4158,9 @@
                 appData.punishments = { ...DEFAULT_DATA.punishments };
                 appData.exchangeRate = { ...DEFAULT_DATA.exchangeRate };
                 appData.emoji = DEFAULT_DATA.emoji;
+                appData.userPunishments = { ...DEFAULT_DATA.userPunishments };
+                appData.gold = { ...DEFAULT_DATA.gold };
+                appData.dailyReport = { ...DEFAULT_DATA.dailyReport };
                 
                 saveAllData();
                 alert('✅ 已恢复默认数据');
@@ -3445,6 +4183,7 @@
                         <tr><td><strong>显示名称</strong></td><td>${currentUser.display_name}</td></tr>
                         <tr><td><strong>身份</strong></td><td>${currentUser.role}</td></tr>
                         <tr><td><strong>学号</strong></td><td>${currentUser.student_id || '无'}</td></tr>
+                        <tr><td><strong>最后登录</strong></td><td>${currentUser.last_login || '首次登录'}</td></tr>
                     </table>
                     
                     <div class="btn-grid" style="margin-top: 30px;">
@@ -3500,6 +4239,7 @@
             
             alert('密码修改成功！');
             closeModal();
+            showAccountManagement();
         }
 
         function showChangeDisplayName() {
@@ -3621,8 +4361,9 @@
                 current_score: currentScore,
                 reason
             };
+            appData.logs = appData.logs || [];
             appData.logs.unshift(log);
-            if (appData.logs.length > 100) appData.logs.pop();
+            if (appData.logs.length > 200) appData.logs.pop();
             saveData('logs');
         }
 
@@ -3650,7 +4391,6 @@
         }
 
         // ==================== 初始化 ====================
-<<<<<<< HEAD
         window.onload = async function() {
             // 显示加载界面
             const loadingScreen = document.getElementById('loadingScreen');
@@ -3805,6 +4545,8 @@
                     appData.punishments = { ...DEFAULT_DATA.punishments };
                     appData.exchangeRate = { ...DEFAULT_DATA.exchangeRate };
                     appData.emoji = DEFAULT_DATA.emoji;
+                    appData.userPunishments = { ...DEFAULT_DATA.userPunishments };
+                    appData.gold = { ...DEFAULT_DATA.gold };
                     
                     appData.cloudMeta = {
                         updated: 0,
@@ -3849,14 +4591,6 @@
                 // 出错时使用默认数据
                 updateProgress(100, '加载失败，使用默认数据', '❌');
                 
-=======
-        window.onload = function() {
-            // 尝试从localStorage加载
-            const hasData = loadFromStorage();
-            
-            if (!hasData) {
-                // 没有数据，使用默认数据
->>>>>>> 2ed447b51e301c99047ccc06f1a11ee12c807dc5
                 appData.users = { ...DEFAULT_DATA.users };
                 appData.scores = { ...DEFAULT_DATA.scores };
                 appData.groups = { ...DEFAULT_DATA.groups };
@@ -3865,9 +4599,10 @@
                 appData.punishments = { ...DEFAULT_DATA.punishments };
                 appData.exchangeRate = { ...DEFAULT_DATA.exchangeRate };
                 appData.emoji = DEFAULT_DATA.emoji;
+                appData.userPunishments = { ...DEFAULT_DATA.userPunishments };
+                appData.gold = { ...DEFAULT_DATA.gold };
                 
                 saveAllData();
-<<<<<<< HEAD
                 
                 setTimeout(() => {
                     loadingScreen.style.display = 'none';
@@ -3877,16 +4612,6 @@
                     alert('⚠️ 云端同步失败，已使用本地数据。错误：' + error.message);
                 }, 1000);
             }
-=======
-            }
-            
-            // 显示登录界面
-            setTimeout(() => {
-                document.getElementById('loadingScreen').style.display = 'none';
-                document.getElementById('loginScreen').style.display = 'block';
-                renderUserSelect();
-            }, 1000);
->>>>>>> 2ed447b51e301c99047ccc06f1a11ee12c807dc5
         };
     </script>
 </body>
