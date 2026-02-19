@@ -82,6 +82,81 @@ function clearLocalCache() {
     });
 }
 
+// ==================== 新增：批量导入数据 ====================
+
+// 批量导入数据
+function batchImportData(importedData) {
+    const results = {
+        success: [],
+        failed: [],
+        total: 0
+    };
+    
+    Object.entries(importedData).forEach(([dataKey, dataValue]) => {
+        if (window.appData.hasOwnProperty(dataKey)) {
+            try {
+                if (dataKey === 'logs' && Array.isArray(dataValue)) {
+                    // 日志合并，保留最新的200条
+                    const allLogs = [...dataValue, ...window.appData.logs];
+                    allLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                    window.appData.logs = allLogs.slice(0, 200);
+                } else if (dataKey === 'userPunishments') {
+                    // 用户惩罚数据合并
+                    if (!window.appData.userPunishments) {
+                        window.appData.userPunishments = { active: {}, completed: {} };
+                    }
+                    
+                    if (dataValue.active) {
+                        Object.entries(dataValue.active).forEach(([userId, puns]) => {
+                            if (!window.appData.userPunishments.active[userId]) {
+                                window.appData.userPunishments.active[userId] = [];
+                            }
+                            window.appData.userPunishments.active[userId] = [
+                                ...window.appData.userPunishments.active[userId],
+                                ...puns
+                            ];
+                        });
+                    }
+                    
+                    if (dataValue.completed) {
+                        Object.entries(dataValue.completed).forEach(([userId, puns]) => {
+                            if (!window.appData.userPunishments.completed[userId]) {
+                                window.appData.userPunishments.completed[userId] = [];
+                            }
+                            window.appData.userPunishments.completed[userId] = [
+                                ...window.appData.userPunishments.completed[userId],
+                                ...puns
+                            ];
+                        });
+                    }
+                } else if (typeof dataValue === 'object' && dataValue !== null) {
+                    // 对象合并
+                    window.appData[dataKey] = {
+                        ...window.appData[dataKey],
+                        ...dataValue
+                    };
+                } else {
+                    // 直接赋值
+                    window.appData[dataKey] = dataValue;
+                }
+                
+                results.success.push(dataKey);
+            } catch (error) {
+                console.error(`导入 ${dataKey} 失败:`, error);
+                results.failed.push(dataKey);
+            }
+        } else {
+            results.failed.push(dataKey);
+        }
+        results.total++;
+    });
+    
+    // 保存到本地缓存
+    saveAllData();
+    
+    return results;
+}
+
 // ==================== 云端同步函数 ====================
 
 // 上传到云端
@@ -218,5 +293,7 @@ window.dataManager = {
     loadFromCloud,
     saveToCloud,
     testCloudConnection,
-    STORAGE_KEYS
+    STORAGE_KEYS,
+    // 新增
+    batchImportData
 };

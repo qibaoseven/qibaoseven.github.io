@@ -153,6 +153,110 @@ function toggleAllReasonStudents(checkbox) {
     document.querySelectorAll('.batch-reason-student').forEach(cb => cb.checked = checkbox.checked);
 }
 
+// ==================== 新增：文件读取工具函数 ====================
+
+// 读取文件夹中的JSON文件
+async function readJSONFilesFromDirectory(files) {
+    const results = {
+        success: [],
+        failed: [],
+        data: {}
+    };
+    
+    const filePromises = [];
+    
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.name.endsWith('.json')) {
+            const promise = new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const jsonData = JSON.parse(e.target.result);
+                        const fileName = file.name.replace('.json', '');
+                        results.data[fileName] = jsonData;
+                        results.success.push(file.name);
+                        resolve({ success: true, file: file.name });
+                    } catch (error) {
+                        console.error(`解析文件 ${file.name} 失败:`, error);
+                        results.failed.push(file.name);
+                        resolve({ success: false, file: file.name, error });
+                    }
+                };
+                reader.onerror = function() {
+                    results.failed.push(file.name);
+                    resolve({ success: false, file: file.name });
+                };
+                reader.readAsText(file);
+            });
+            filePromises.push(promise);
+        }
+    }
+    
+    await Promise.all(filePromises);
+    return results;
+}
+
+// 文件映射配置（文件名 -> 数据键名）
+const FILE_TO_DATA_KEY = {
+    'user': 'users',
+    'score': 'scores',
+    'gold_data': 'gold',
+    'rewards': 'rewards',
+    'punishment': 'punishments',
+    'usr_pun': 'userPunishments',
+    'log': 'logs',
+    'score_rules': 'rules',
+    'exchange_rate': 'exchangeRate',
+    'emoji': 'emoji',
+    'daily_report': 'dailyReport'
+};
+
+// 导入文件夹数据
+async function importFolderData(files) {
+    const readResult = await readJSONFilesFromDirectory(files);
+    
+    if (readResult.success.length === 0) {
+        return {
+            success: false,
+            message: '没有找到有效的JSON文件',
+            details: readResult
+        };
+    }
+    
+    // 映射数据到appData
+    const imported = {};
+    const mapping = {};
+    
+    Object.entries(readResult.data).forEach(([fileName, fileData]) => {
+        // 尝试直接匹配文件名
+        if (FILE_TO_DATA_KEY[fileName]) {
+            const dataKey = FILE_TO_DATA_KEY[fileName];
+            imported[dataKey] = fileData;
+            mapping[fileName] = dataKey;
+        } 
+        // 尝试匹配存储键
+        else {
+            const upperFileName = fileName.toUpperCase();
+            for (const [key, storageKey] of Object.entries(window.dataManager.STORAGE_KEYS)) {
+                const dataKey = key.toLowerCase();
+                if (storageKey.includes(fileName) || fileName.includes(dataKey)) {
+                    imported[dataKey] = fileData;
+                    mapping[fileName] = dataKey;
+                    break;
+                }
+            }
+        }
+    });
+    
+    return {
+        success: true,
+        imported,
+        mapping,
+        details: readResult
+    };
+}
+
 // 导出工具函数到全局
 window.utils = {
     formatDate,
@@ -170,5 +274,9 @@ window.utils = {
     drawReward,
     filterStudents,
     toggleAllStudents,
-    toggleAllReasonStudents
+    toggleAllReasonStudents,
+    // 新增
+    readJSONFilesFromDirectory,
+    importFolderData,
+    FILE_TO_DATA_KEY
 };
