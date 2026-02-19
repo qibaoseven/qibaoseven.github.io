@@ -41,27 +41,58 @@ function getStudentRank(studentId) {
 // 获取金币排名
 function getGoldRanking(limit = 999) {
     const rankings = [];
+    
+    // 安全地遍历 gold 数据
     Object.entries(window.appData?.gold || {}).forEach(([id, data]) => {
-        if (id !== '0' && window.appData?.scores?.[id]) {
-            rankings.push({
-                id,
-                name: window.appData.scores[id][0],
-                gold: data.amount || 0
-            });
+        // 获取学生姓名
+        let studentName = '未知';
+        const studentData = window.appData?.scores?.[id];
+        
+        if (Array.isArray(studentData)) {
+            studentName = studentData[0] || '未知';
+        } else if (typeof studentData === 'object' && studentData !== null) {
+            studentName = studentData.name || '未知';
         }
+        
+        rankings.push({
+            id,
+            name: studentName,
+            gold: data?.amount || 0
+        });
     });
+    
     return rankings.sort((a, b) => b.gold - a.gold).slice(0, limit);
 }
 
 // 获取分数排名
 function getTopRanking(limit = 999) {
-    return Object.entries(window.appData?.scores || {})
-        .filter(([id]) => id !== '0')
-        .map(([id, [name, score]]) => ({ id, name, score }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, limit);
+    const students = [];
+    
+    // 安全地遍历 scores 数据
+    Object.entries(window.appData?.scores || {}).forEach(([id, data]) => {
+        if (id !== '0') {
+            // 处理数组格式 [name, score]
+            if (Array.isArray(data)) {
+                students.push({
+                    id: id,
+                    name: data[0] || '未知',
+                    score: typeof data[1] === 'number' ? data[1] : 0
+                });
+            }
+            // 处理对象格式 { name: 'xxx', score: xxx }
+            else if (typeof data === 'object' && data !== null) {
+                students.push({
+                    id: id,
+                    name: data.name || '未知',
+                    score: typeof data.score === 'number' ? data.score : 0
+                });
+            }
+        }
+    });
+    
+    // 按分数排序并返回前 limit 个
+    return students.sort((a, b) => b.score - a.score).slice(0, limit);
 }
-
 // 更新学生分数
 function updateStudentScore(studentId, change, reason = '') {
     if (!window.appData?.scores?.[studentId]) return false;
@@ -256,8 +287,35 @@ async function importFolderData(files) {
         details: readResult
     };
 }
+// ==================== 在文件末尾添加这个函数 ====================
 
-// 导出工具函数到全局
+// 获取所有学生列表（安全格式）
+function getAllStudents() {
+    const students = [];
+    Object.entries(window.appData?.scores || {}).forEach(([id, data]) => {
+        if (id !== '0') {
+            // 处理数组格式 [name, score]
+            if (Array.isArray(data)) {
+                students.push({
+                    id: id,
+                    name: data[0] || '未知',
+                    score: typeof data[1] === 'number' ? data[1] : 0
+                });
+            }
+            // 处理对象格式 { name: 'xxx', score: xxx }
+            else if (typeof data === 'object' && data !== null) {
+                students.push({
+                    id: id,
+                    name: data.name || '未知',
+                    score: typeof data.score === 'number' ? data.score : 0
+                });
+            }
+        }
+    });
+    return students;
+}
+
+// ==================== 导出工具函数到全局 ====================
 window.utils = {
     formatDate,
     getBeijingDate,
@@ -275,8 +333,37 @@ window.utils = {
     filterStudents,
     toggleAllStudents,
     toggleAllReasonStudents,
-    // 新增
+    // 文件导入相关
     readJSONFilesFromDirectory,
     importFolderData,
-    FILE_TO_DATA_KEY
+    FILE_TO_DATA_KEY,
+    // 新增
+    getAllStudents,
+    getStudentName,
+    getStudentData
 };
+
+// 还需要添加这两个辅助函数
+function getStudentData(studentId) {
+    if (!window.appData?.scores?.[studentId]) return null;
+    const data = window.appData.scores[studentId];
+    
+    if (Array.isArray(data)) {
+        return {
+            name: data[0] || '未知',
+            score: typeof data[1] === 'number' ? data[1] : 0
+        };
+    }
+    else if (typeof data === 'object' && data !== null) {
+        return {
+            name: data.name || '未知',
+            score: typeof data.score === 'number' ? data.score : 0
+        };
+    }
+    return null;
+}
+
+function getStudentName(studentId) {
+    const student = getStudentData(studentId);
+    return student?.name || '未知';
+}

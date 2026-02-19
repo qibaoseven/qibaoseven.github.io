@@ -1,6 +1,8 @@
 // ==================== 排名管理页面 ====================
 
 function showRanking() {
+    const topStudents = window.utils.getTopRanking(10);
+    
     document.getElementById('contentArea').innerHTML = `
         <div class="content-card">
             <h2 class="card-title">🏆 排名管理</h2>
@@ -24,12 +26,12 @@ function showRanking() {
                         </tr>
                     </thead>
                     <tbody>
-                        ${window.utils.getTopRanking(10).map((rank, index) => `
-                            <tr ${rank.id === window.currentUser?.student_id ? 'style="background: #fff6f0; border-left: 3px solid #ff4e4e;"' : ''}>
+                        ${topStudents.map((student, index) => `
+                            <tr ${student.id === window.currentUser?.student_id ? 'style="background: #fff6f0; border-left: 3px solid #ff4e4e;"' : ''}>
                                 <td>${index + 1}</td>
-                                <td>${rank.name}</td>
-                                <td>${rank.id}</td>
-                                <td><strong style="color: #ff4e4e;">${rank.score}</strong></td>
+                                <td>${student.name}</td>
+                                <td>${student.id}</td>
+                                <td><strong style="color: #ff4e4e;">${student.score}</strong></td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -54,12 +56,12 @@ function showIndividualRanking() {
                     </tr>
                 </thead>
                 <tbody>
-                    ${rankings.map((rank, index) => `
-                        <tr ${rank.id === window.currentUser?.student_id ? 'style="background: #fff6f0;"' : ''}>
+                    ${rankings.map((student, index) => `
+                        <tr ${student.id === window.currentUser?.student_id ? 'style="background: #fff6f0;"' : ''}>
                             <td>${index + 1}</td>
-                            <td>${rank.name}</td>
-                            <td>${rank.id}</td>
-                            <td><strong style="color: ${rank.id === window.currentUser?.student_id ? '#ff4e4e' : '#ff6b4a'};">${rank.score}</strong></td>
+                            <td>${student.name}</td>
+                            <td>${student.id}</td>
+                            <td><strong style="color: ${student.id === window.currentUser?.student_id ? '#ff4e4e' : '#ff6b4a'};">${student.score}</strong></td>
                         </tr>
                     `).join('')}
                 </tbody>

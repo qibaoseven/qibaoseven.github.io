@@ -6,10 +6,7 @@ function showDailyReport() {
         return;
     }
     
-    const students = Object.entries(window.appData.scores || {})
-        .filter(([id]) => id !== '0')
-        .sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
-    
+    const students = window.utils.getAllStudents().sort((a, b) => parseInt(a.id) - parseInt(b.id));
     const today = window.utils.getBeijingDate();
     const reportedToday = window.appData.dailyReport[today] || [];
     
@@ -50,28 +47,28 @@ function showDailyReport() {
                         </tr>
                     </thead>
                     <tbody>
-                        ${students.map(([id, [name, score]]) => {
-                            const isReported = reportedToday.includes(id);
+                        ${students.map(student => {
+                            const isReported = reportedToday.includes(student.id);
                             return `
-                                <tr data-id="${id}">
-                                    <td>${id}</td>
-                                    <td>${name}</td>
-                                    <td class="current-score">${score}</td>
+                                <tr data-id="${student.id}">
+                                    <td>${student.id}</td>
+                                    <td>${student.name}</td>
+                                    <td class="current-score">${student.score}</td>
                                     <td>
                                         <span class="report-status ${isReported ? 'status-reported' : 'status-unreported'}" 
-                                              onclick="window.dailyReport.toggleReport('${id}')">
+                                              onclick="window.dailyReport.toggleReport('${student.id}')">
                                             ${isReported ? '✓ 已汇报' : '⭕ 未汇报'}
                                         </span>
                                     </td>
                                     <td>
-                                        <button class="action-btn btn-minus" onclick="window.dailyReport.quickAdjust('${id}', -2)">-2</button>
+                                        <button class="action-btn btn-minus" onclick="window.dailyReport.quickAdjust('${student.id}', -2)">-2</button>
                                     </td>
                                     <td>
-                                        <input type="number" class="score-input" id="input-${id}" value="-2" 
-                                               onchange="window.dailyReport.customAdjust('${id}', this.value)">
+                                        <input type="number" class="score-input" id="input-${student.id}" value="-2" 
+                                               onchange="window.dailyReport.customAdjust('${student.id}', this.value)">
                                     </td>
                                     <td>
-                                        <button class="action-btn btn-plus" onclick="window.dailyReport.quickAdjust('${id}', 2)">+2</button>
+                                        <button class="action-btn btn-plus" onclick="window.dailyReport.quickAdjust('${student.id}', 2)">+2</button>
                                     </td>
                                 </tr>
                             `;

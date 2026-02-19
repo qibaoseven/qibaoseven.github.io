@@ -10,6 +10,26 @@ function showGacha() {
     const gold = window.utils.getStudentGold(studentId);
     const score = window.utils.getStudentScore(studentId);
     
+    // 安全地处理奖励数据
+    const rewards = window.appData.rewards || {};
+    
+    // 生成奖励预览HTML
+    let rewardsHtml = '';
+    Object.entries(rewards).forEach(([rarity, rewardList]) => {
+        if (Array.isArray(rewardList)) {
+            rewardList.slice(0, 2).forEach(reward => {
+                rewardsHtml += `
+                    <div class="reward-card reward-rarity-${rarity}">
+                        <div class="reward-name">${reward.name || ''}</div>
+                        <div class="reward-type">${reward.type || ''}</div>
+                        <div class="reward-desc">${reward.description || ''}</div>
+                        <div class="reward-prob">${reward.probability || 0}%</div>
+                    </div>
+                `;
+            });
+        }
+    });
+    
     document.getElementById('contentArea').innerHTML = `
         <div class="content-card">
             <h2 class="card-title">🎰 学分抽奖</h2>
@@ -61,16 +81,7 @@ function showGacha() {
             <div style="margin-top: 30px;">
                 <h3 style="color: #ff4e4e;">📋 奖励预览</h3>
                 <div class="reward-grid">
-                    ${Object.entries(window.appData.rewards || {}).map(([rarity, rewards]) => 
-                        (rewards || []).slice(0, 2).map(reward => `
-                            <div class="reward-card reward-rarity-${rarity}">
-                                <div class="reward-name">${reward.name || ''}</div>
-                                <div class="reward-type">${reward.type || ''}</div>
-                                <div class="reward-desc">${reward.description || ''}</div>
-                                <div class="reward-prob">${reward.probability || 0}%</div>
-                            </div>
-                        `).join('')
-                    ).join('')}
+                    ${rewardsHtml}
                 </div>
             </div>
         </div>
@@ -103,25 +114,39 @@ function showGachaHistory() {
 }
 
 function showRewardPool() {
-    window.modal.show('完整奖励列表', `
-        <div style="max-height: 400px; overflow-y: auto;">
-            ${Object.entries(window.appData.rewards || {}).map(([rarity, rewards]) => `
-                <h4 style="margin-top: 15px; color: #ff4e4e;">${rarity} 稀有度</h4>
-                ${rewards.map(reward => `
+    const rewards = window.appData.rewards || {};
+    
+    let rewardsHtml = '';
+    Object.entries(rewards).forEach(([rarity, rewardList]) => {
+        if (rarity !== 'hidden_rewards' && Array.isArray(rewardList)) {
+            rewardsHtml += `<h4 style="margin-top: 15px; color: #ff4e4e;">${rarity} 稀有度</h4>`;
+            rewardList.forEach(reward => {
+                rewardsHtml += `
                     <div style="padding: 10px; margin: 5px 0; background: #fff6f0; border-radius: 8px; border-left: 3px solid #ff9f4e;">
                         <strong style="color: #ff6b4a;">${reward.name}</strong> <span style="color: #ff8f4e;">(${reward.probability}%)</span>
                         <p style="color: #ff8f4e; margin-top: 5px;">${reward.description}</p>
                     </div>
-                `).join('')}
-            `).join('')}
-            
-            <h4 style="margin-top: 20px; color: #ff4e4e;">🎁 隐藏奖励</h4>
-            ${(window.appData.rewards.hidden_rewards || []).map(reward => `
+                `;
+            });
+        }
+    });
+    
+    // 添加隐藏奖励
+    if (rewards.hidden_rewards && Array.isArray(rewards.hidden_rewards)) {
+        rewardsHtml += `<h4 style="margin-top: 20px; color: #ff4e4e;">🎁 隐藏奖励</h4>`;
+        rewards.hidden_rewards.forEach(reward => {
+            rewardsHtml += `
                 <div style="padding: 10px; margin: 5px 0; background: #fff6f0; border-radius: 8px; border-left: 3px solid #ffb84e;">
                     <strong style="color: #ff6b4a;">${reward.name}</strong> <span style="color: #ff8f4e;">(${reward.probability}%)</span>
                     <p style="color: #ff8f4e; margin-top: 5px;">${reward.description}</p>
                 </div>
-            `).join('') || '<p style="color: #ff8f4e;">暂无隐藏奖励</p>'}
+            `;
+        });
+    }
+    
+    window.modal.show('完整奖励列表', `
+        <div style="max-height: 400px; overflow-y: auto;">
+            ${rewardsHtml || '<p style="color: #ff8f4e;">暂无奖励数据</p>'}
         </div>
     `, [
         { text: '关闭', onclick: 'window.modal.close()' }

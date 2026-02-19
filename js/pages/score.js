@@ -1,10 +1,8 @@
 // ==================== 分数管理页面 ====================
 
 function showScoreManagement() {
-    const students = Object.entries(window.appData.scores || {})
-        .filter(([id]) => id !== '0')
-        .sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
-    
+    // 安全获取学生数据
+    const students = window.utils.getAllStudents().sort((a, b) => parseInt(a.id) - parseInt(b.id));
     const rules = Object.entries(window.appData.rules || {});
     
     document.getElementById('contentArea').innerHTML = `
@@ -40,14 +38,14 @@ function showScoreManagement() {
                             </tr>
                         </thead>
                         <tbody>
-                            ${students.map(([id, [name, score]]) => `
-                                <tr data-name="${name}">
-                                    <td>${id}</td>
-                                    <td>${name}</td>
-                                    <td>${score}</td>
+                            ${students.map(student => `
+                                <tr data-name="${student.name}">
+                                    <td>${student.id}</td>
+                                    <td>${student.name}</td>
+                                    <td>${student.score}</td>
                                     <td>
-                                        <button class="btn btn-sm btn-success" onclick="window.score.quickAddScore('${id}', 2)">+2</button>
-                                        <button class="btn btn-sm btn-danger" onclick="window.score.quickAddScore('${id}', -2)">-2</button>
+                                        <button class="btn btn-sm btn-success" onclick="window.score.quickAddScore('${student.id}', 2)">+2</button>
+                                        <button class="btn btn-sm btn-danger" onclick="window.score.quickAddScore('${student.id}', -2)">-2</button>
                                     </td>
                                 </tr>
                             `).join('')}
@@ -95,11 +93,11 @@ function showScoreManagement() {
                         </tr>
                     </thead>
                     <tbody>
-                        ${students.map(([id, [name, score]]) => `
+                        ${students.map(student => `
                             <tr>
-                                <td>${id}</td>
-                                <td>${name}</td>
-                                <td>${score}</td>
+                                <td>${student.id}</td>
+                                <td>${student.name}</td>
+                                <td>${student.score}</td>
                             </tr>
                         `).join('')}
                     </tbody>
