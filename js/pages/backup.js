@@ -333,7 +333,7 @@ window.backup = {
     resetToDefault,
     handleResetToDefault,
     loadDefaultFromCloud,
-    // 新增
+    // 新增1
     showImportFolder,
     previewFolderFiles,
     handleFolderImport,

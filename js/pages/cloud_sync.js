@@ -7,7 +7,7 @@ function showCloudSync() {
     }
     
     const lastSync = window.appData.cloudMeta?.lastSync ? new Date(window.appData.cloudMeta.lastSync).toLocaleString() : '从未同步';
-    const isConfigured = CLOUD_CONFIG.binId && CLOUD_CONFIG.masterKey;
+    const isConfigured = window.CLOUD_CONFIG?.binId && window.CLOUD_CONFIG?.masterKey;
     
     document.getElementById('contentArea').innerHTML = `
         <div class="content-card">
@@ -17,19 +17,20 @@ function showCloudSync() {
                 <strong style="color: #ff4e4e;">📌 云端状态：</strong><br>
                 • 最后同步时间：${lastSync}<br>
                 • 本地数据版本：${window.appData.cloudMeta?.updated || 0}<br>
-                • 同步模式：JSONBin<br>
+                • 同步模式：<strong>完全云端模式</strong><br>
+                • 连接状态：${navigator.onLine ? '✅ 在线' : '❌ 离线'}<br>
                 • 配置状态：${isConfigured ? '✅ 已配置' : '❌ 未配置'}<br>
-                • Bin ID: ${CLOUD_CONFIG.binId}
+                • Bin ID: ${window.CLOUD_CONFIG?.binId || '未设置'}
             </div>
             
             <div class="btn-grid">
-                <button class="btn btn-primary" onclick="window.cloudSync.showCloudUpload()" ${!isConfigured ? 'disabled' : ''}>
+                <button class="btn btn-primary" onclick="window.cloudSync.showCloudUpload()">
                     📤 上传到云端
                 </button>
-                <button class="btn btn-primary" onclick="window.cloudSync.showCloudDownload()" ${!isConfigured ? 'disabled' : ''}>
+                <button class="btn btn-primary" onclick="window.cloudSync.showCloudDownload()">
                     📥 从云端下载
                 </button>
-                <button class="btn btn-primary" onclick="window.cloudSync.testCloudConnection()" ${!isConfigured ? 'disabled' : ''}>
+                <button class="btn btn-primary" onclick="window.cloudSync.testCloudConnection()">
                     📡 测试连接
                 </button>
                 <button class="btn btn-primary" onclick="window.cloudSync.showCloudConfig()">
@@ -37,13 +38,12 @@ function showCloudSync() {
                 </button>
             </div>
             
-            <div class="warning-box">
-                <strong>⚠️ 注意事项：</strong>
-                <ul style="margin-top: 10px; margin-left: 20px;">
-                    <li>上传会覆盖云端数据</li>
-                    <li>下载会覆盖本地数据</li>
-                    <li>建议定期备份重要数据</li>
-                </ul>
+            <div class="info-box" style="background: #fff6f0;">
+                <strong style="color: #ff4e4e;">📢 说明：</strong><br>
+                • 本系统使用<strong>完全云端模式</strong><br>
+                • 所有数据都存储在云端服务器<br>
+                • 本地仅作为缓存，用于离线访问<br>
+                • 每次打开页面都会自动从云端加载最新数据
             </div>
             
             <div id="cloudStatus" style="margin-top: 20px;"></div>
@@ -51,26 +51,124 @@ function showCloudSync() {
     `;
 }
 
-function showCloudConfig() {
-    window.modal.show('云端配置', `
-        <div style="margin: 20px 0;">
-            <p style="color: #ff6b4a;">当前配置的 Bin ID:</p>
-            <p style="background: #fff6f0; padding: 10px; border-radius: 8px; font-family: monospace; color: #ff4e4e;">${CLOUD_CONFIG.binId}</p>
-            
-            <p style="color: #ff8f4e;">如需修改配置，请直接修改代码中的 CLOUD_CONFIG 变量。</p>
-            
-            <div class="info-box">
-                <strong style="color: #ff4e4e;">如何获取 Bin ID?</strong><br>
-                1. 访问 https://jsonbin.io/<br>
-                2. 注册/登录账号<br>
-                3. 创建新的 Bin<br>
-                4. 复制 Bin ID 和 Master Key
+async function refreshFromCloud() {
+    const statusDiv = document.getElementById('cloudStatus');
+    if (statusDiv) {
+        statusDiv.innerHTML = '<div class="info-box">⏳ 正在从云端刷新数据...</div>';
+    }
+    
+    const result = await window.dataManager.loadFromCloud();
+    
+    if (result.success) {
+        statusDiv.innerHTML = `
+            <div class="success-box">
+                ✅ 数据刷新成功！<br>
+                版本号：${window.appData.cloudMeta.updated}<br>
+                时间：${new Date().toLocaleString()}
             </div>
-        </div>
-    `, [
-        { text: '关闭', onclick: 'window.modal.close()' }
-    ]);
+        `;
+        
+        // 更新界面
+        if (window.currentUser) {
+            window.auth.renderSidebar();
+            window.dashboard.showDashboard();
+        }
+        
+        // 更新云端状态显示
+        updateCloudStatus(true);
+        
+        window.modal.notify('数据刷新成功！', 'success');
+    } else {
+        statusDiv.innerHTML = `
+            <div class="warning-box">
+                ❌ 刷新失败：${result.error}<br>
+                请检查网络连接后重试。
+            </div>
+        `;
+    }
 }
+
+async function saveToCloud() {
+    const statusDiv = document.getElementById('cloudStatus');
+    if (statusDiv) {
+        statusDiv.innerHTML = '<div class="info-box">⏳ 正在保存数据到云端...</div>';
+    }
+    
+    const result = await window.dataManager.saveToCloud();
+    
+    if (result.success) {
+        statusDiv.innerHTML = `
+            <div class="success-box">
+                ✅ 数据保存成功！<br>
+                新版本号：${window.appData.cloudMeta.updated}<br>
+                时间：${new Date().toLocaleString()}
+            </div>
+        `;
+        
+        updateCloudStatus(true);
+        window.modal.notify('数据已保存到云端！', 'success');
+    } else {
+        statusDiv.innerHTML = `
+            <div class="warning-box">
+                ❌ 保存失败：${result.error}
+            </div>
+        `;
+    }
+}
+
+async function testCloudConnection() {
+    const statusDiv = document.getElementById('cloudStatus');
+    if (statusDiv) {
+        statusDiv.innerHTML = '<div class="info-box">⏳ 正在测试云端连接...</div>';
+    }
+    
+    const result = await window.dataManager.testCloudConnection();
+    
+    if (result.success) {
+        statusDiv.innerHTML = `
+            <div class="success-box">
+                ✅ 云端连接正常！<br>
+                数据版本：${result.version}<br>
+                最后同步：${result.lastSync ? new Date(result.lastSync).toLocaleString() : '未知'}
+            </div>
+        `;
+    } else {
+        statusDiv.innerHTML = `
+            <div class="warning-box">
+                ❌ 云端连接失败：${result.error}
+            </div>
+        `;
+    }
+}
+
+function clearLocalCache() {
+    if (confirm('确定要清除本地缓存吗？下次打开页面时会重新从云端加载。')) {
+        window.dataManager.clearLocalCache();
+        window.modal.notify('本地缓存已清除', 'success');
+        updateCloudStatus(false);
+    }
+}
+
+function updateCloudStatus(isOnline) {
+    // 只在主界面的header中更新状态
+    const cloudIcon = document.getElementById('cloudIcon');
+    const cloudText = document.getElementById('cloudText');
+    const cloudStatus = document.getElementById('cloudStatus');
+    
+    if (cloudIcon && cloudText && cloudStatus) {
+        if (isOnline) {
+            cloudIcon.textContent = '☁️✅';
+            cloudText.textContent = '云端在线';
+            cloudStatus.className = 'cloud-status online';
+        } else {
+            cloudIcon.textContent = '☁️⚠️';
+            cloudText.textContent = '离线模式';
+            cloudStatus.className = 'cloud-status offline';
+        }
+    }
+}
+
+// ==================== 上传/下载相关函数 ====================
 
 function showCloudUpload() {
     window.modal.show('上传到云端', `
@@ -153,10 +251,12 @@ async function handleCloudUpload() {
         
         alert('✅ 数据上传成功！');
         
-        const cloudStatus = document.getElementById('cloudStatus');
+        // 修复：只在主界面的header中更新状态
         const cloudIcon = document.getElementById('cloudIcon');
         const cloudText = document.getElementById('cloudText');
-        if (cloudStatus) {
+        const cloudStatus = document.getElementById('cloudStatus');
+        
+        if (cloudIcon && cloudText && cloudStatus) {
             cloudIcon.textContent = '☁️✅';
             cloudText.textContent = '云端已同步';
             cloudStatus.className = 'cloud-status online';
@@ -256,40 +356,37 @@ async function handleCloudDownload() {
     }
 }
 
-async function testCloudConnection() {
-    try {
-        const statusDiv = document.getElementById('cloudStatus');
-        if (statusDiv) {
-            statusDiv.innerHTML = '<div class="info-box">⏳ 正在测试云端连接...</div>';
-        }
-        
-        const data = await window.dataManager.downloadFromCloud();
-        
-        if (statusDiv) {
-            statusDiv.innerHTML = `
-                <div class="success-box">
-                    ✅ 云端连接正常！<br>
-                    数据版本：${data.cloudMeta?.updated || '未知'}<br>
-                    最后同步：${data.cloudMeta?.lastSync ? new Date(data.cloudMeta.lastSync).toLocaleString() : '未知'}
-                </div>
-            `;
-        }
-    } catch (error) {
-        console.error('连接测试失败:', error);
-        const statusDiv = document.getElementById('cloudStatus');
-        if (statusDiv) {
-            statusDiv.innerHTML = `<div class="warning-box">❌ 云端连接失败：${error.message}</div>`;
-        }
-    }
+function showCloudConfig() {
+    window.modal.show('云端配置', `
+        <div style="margin: 20px 0;">
+            <p style="color: #ff6b4a;">当前配置的 Bin ID:</p>
+            <p style="background: #fff6f0; padding: 10px; border-radius: 8px; font-family: monospace; color: #ff4e4e;">${window.CLOUD_CONFIG?.binId || '未设置'}</p>
+            
+            <p style="color: #ff8f4e;">如需修改配置，请直接修改代码中的 CLOUD_CONFIG 变量。</p>
+            
+            <div class="info-box">
+                <strong style="color: #ff4e4e;">如何获取 Bin ID?</strong><br>
+                1. 访问 https://jsonbin.io/<br>
+                2. 注册/登录账号<br>
+                3. 创建新的 Bin<br>
+                4. 复制 Bin ID 和 Master Key
+            </div>
+        </div>
+    `, [
+        { text: '关闭', onclick: 'window.modal.close()' }
+    ]);
 }
 
 // 导出到全局
 window.cloudSync = {
     showCloudSync,
-    showCloudConfig,
+    refreshFromCloud,
+    saveToCloud,
+    testCloudConnection,
+    clearLocalCache,
     showCloudUpload,
     handleCloudUpload,
     showCloudDownload,
     handleCloudDownload,
-    testCloudConnection
+    showCloudConfig
 };
