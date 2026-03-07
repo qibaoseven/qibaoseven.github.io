@@ -1,27 +1,39 @@
 // ==================== 我的分数页面 ====================
+// 权限：r--r--r--（所有人只读，不能修改）
 
 function showMyScore() {
-    //document.getElementById('contentArea').setAttribute('data-page', 'myScore');
-    const studentId = window.currentUser.student_id;
-    const studentName = window.appData.scores[studentId]?.[0] || '未知';
-    const score = window.utils.getStudentScore(studentId);
+    document.getElementById('contentArea').setAttribute('data-page', 'myScore');
     
-    const myLogs = (window.appData.logs || []).filter(log => log.student_id === studentId);
+    const studentId = window.currentUser.student_id;
+    const studentName = window.utils.getStudentName(studentId);
+    const score = window.utils.getStudentScore(studentId);
+    const gold = window.utils.getStudentGold(studentId);
+    
+    // 只筛选有分数变动的日志（score_change !== 0）
+    const myLogs = (window.appData.logs || [])
+        .filter(log => log.student_id === studentId && log.score_change !== 0);
     
     let totalAdd = 0, totalDeduct = 0;
     myLogs.forEach(log => {
         if (log.score_change > 0) totalAdd += log.score_change;
-        else totalDeduct += Math.abs(log.score_change);
+        else if (log.score_change < 0) totalDeduct += Math.abs(log.score_change);
     });
     
     document.getElementById('contentArea').innerHTML = `
         <div class="content-card">
-            <h2 class="card-title">📊 我的分数</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 class="card-title">📊 我的分数</h2>
+                <span style="background: #ff4e4e; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8em;">r--r--r--</span>
+            </div>
             
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-value">${score}</div>
                     <div class="stat-label">当前分数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${gold}</div>
+                    <div class="stat-label">当前金币</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-value">+${totalAdd}</div>
@@ -31,19 +43,15 @@ function showMyScore() {
                     <div class="stat-value">-${totalDeduct}</div>
                     <div class="stat-label">总扣分</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-value">${myLogs.length}</div>
-                    <div class="stat-label">变化次数</div>
-                </div>
             </div>
             
             <div class="btn-grid">
-                <button class="btn btn-primary" onclick="window.myScore.showMyScoreDetail()">查看详细</button>
-                <button class="btn btn-primary" onclick="window.myScore.showMyScoreHistory()">历史记录</button>
-                <button class="btn btn-primary" onclick="window.myScore.showMyScoreAnalysis()">数据分析</button>
+                <button class="btn btn-primary" onclick="window.myScore.showMyScoreDetail()">📋 详细</button>
+                <button class="btn btn-primary" onclick="window.myScore.showMyScoreHistory()">📜 历史</button>
+                <button class="btn btn-primary" onclick="window.myScore.showMyScoreAnalysis()">📊 分析</button>
             </div>
             
-            <h3 style="margin-top: 30px;">🕒 最近变化</h3>
+            <h3 style="margin-top: 30px;">📋 最近10条分数变动</h3>
             <table class="data-table">
                 <thead>
                     <tr>
@@ -68,12 +76,17 @@ function showMyScore() {
             </table>
         </div>
     `;
+    
+    window.utils.addViewLog('浏览', '进入我的分数');
 }
 
+// 显示详细
 function showMyScoreDetail() {
     const studentId = window.currentUser.student_id;
-    const studentName = window.appData.scores[studentId]?.[0] || '未知';
+    const studentName = window.utils.getStudentName(studentId);
     const score = window.utils.getStudentScore(studentId);
+    const gold = window.utils.getStudentGold(studentId);
+    const rank = window.utils.getStudentRank(studentId);
     
     window.modal.show('我的分数详情', `
         <div style="text-align: center; margin: 20px 0;">
@@ -84,17 +97,20 @@ function showMyScoreDetail() {
         <div style="background: #fff6f0; padding: 20px; border-radius: 10px;">
             <p><strong>👤 姓名：</strong>${studentName}</p>
             <p><strong>🎓 学号：</strong>${studentId}</p>
-            <p><strong>🏆 排名：</strong>${window.utils.getStudentRank(studentId)}</p>
-            <p><strong>💰 金币：</strong>${window.utils.getStudentGold(studentId)}</p>
+            <p><strong>🏆 排名：</strong>${rank}</p>
+            <p><strong>💰 金币：</strong>${gold}</p>
         </div>
     `, [
         { text: '关闭', onclick: 'window.modal.close()' }
     ]);
 }
 
+// 显示分数历史（只显示有分数变动的日志）
 function showMyScoreHistory() {
     const studentId = window.currentUser.student_id;
-    const myLogs = (window.appData.logs || []).filter(log => log.student_id === studentId);
+    const myLogs = (window.appData.logs || [])
+        .filter(log => log.student_id === studentId && log.score_change !== 0)
+        .slice(0, 50);
     
     window.modal.show('分数历史', `
         <div style="max-height: 400px; overflow-y: auto;">
@@ -112,15 +128,18 @@ function showMyScoreHistory() {
                     <div>➡️ 分数变为: ${log.current_score}</div>
                 </div>
             `).join('')}
+            ${myLogs.length === 0 ? '<p style="color: #ff8f4e;">暂无分数变动记录</p>' : ''}
         </div>
     `, [
         { text: '关闭', onclick: 'window.modal.close()' }
     ]);
 }
 
+// 显示分数分析
 function showMyScoreAnalysis() {
     const studentId = window.currentUser.student_id;
-    const myLogs = (window.appData.logs || []).filter(log => log.student_id === studentId);
+    const myLogs = (window.appData.logs || [])
+        .filter(log => log.student_id === studentId && log.score_change !== 0);
     const score = window.utils.getStudentScore(studentId);
     
     let totalAdd = 0, totalDeduct = 0, addCount = 0, deductCount = 0;
@@ -173,7 +192,7 @@ function showMyScoreAnalysis() {
     ]);
 }
 
-// 导出到全局
+// ==================== 导出 ====================
 window.myScore = {
     showMyScore,
     showMyScoreDetail,

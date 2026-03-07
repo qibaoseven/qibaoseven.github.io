@@ -37,8 +37,8 @@ window.appData = {
     exchangeRate: {},
     emoji: '',
     dailyReport: {},
-    dailyCheck: {},        // 新增：每日检查记录 { "2026-03-04": { all_check: 1, checked: 0 } }
-    autoEvents: [],        // 新增：自动事件列表
+    dailyCheck: {},        // 格式：{ "2026-03-04": { all_check: 1, checked: 0 } }
+    autoEvents: [],        // 自动事件列表
     cloudMeta: { updated: 0, lastSync: null }
 };
 
@@ -269,7 +269,7 @@ async function testCloudConnection() {
     }
 }
 
-// ==================== 新增：每日检查逻辑 ====================
+// ==================== 修复后的每日检查逻辑 ====================
 
 async function checkDailyReports() {
     const today = window.utils.getBeijingDate();
@@ -278,11 +278,23 @@ async function checkDailyReports() {
     const allDates = Object.keys(window.appData.dailyReport || {});
     
     for (const date of allDates) {
+        // 只检查过去的日期（不含今天）
         if (date >= today) continue;
         
+        // 如果当天已经检查过（checked === 1），跳过
         if (dailyCheck[date] && dailyCheck[date].checked === 1) continue;
         
-        if (!dailyCheck[date] || dailyCheck[date].all_check === 0) {
+        // 检查当天是否有全员检查记录
+        // 兼容旧数据：如果 dailyCheck[date].all_check 存在且为 1，表示已进行全员检查
+        // 兼容新数据：如果 dailyReport[date] 的长度等于学生总数，也表示已进行全员检查
+        const reportedCount = (window.appData.dailyReport[date] || []).length;
+        const totalStudents = Object.keys(window.appData.scores || {}).filter(id => id !== '0').length;
+        
+        const hasAllCheck = (dailyCheck[date] && dailyCheck[date].all_check === 1) || 
+                            (reportedCount >= totalStudents);  // 汇报人数达到或超过总学生数
+        
+        // 如果没有进行全员检查，扣管理员分
+        if (!hasAllCheck) {
             const admins = Object.values(window.appData.users || {})
                 .filter(user => user.role === 'admin')
                 .map(user => user.student_id);
@@ -299,6 +311,7 @@ async function checkDailyReports() {
             });
         }
         
+        // 标记为已检查
         if (!dailyCheck[date]) dailyCheck[date] = {};
         dailyCheck[date].checked = 1;
     }
@@ -308,7 +321,7 @@ async function checkDailyReports() {
     await saveToCloud();
 }
 
-// ==================== 新增：自动事件 ====================
+// ==================== 自动事件 ====================
 
 async function runAutoEvents() {
     const events = window.appData.autoEvents || [];

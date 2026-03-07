@@ -156,17 +156,10 @@ function updateCloudStatus(isOnline) {
     const cloudText = document.getElementById('cloudText');
     const cloudStatus = document.getElementById('cloudStatus');
     
-    if (cloudIcon && cloudText && cloudStatus) {
-        if (isOnline) {
-            cloudIcon.textContent = '☁️✅';
-            cloudText.textContent = '云端在线';
-            cloudStatus.className = 'cloud-status online';
-        } else {
-            cloudIcon.textContent = '☁️⚠️';
-            cloudText.textContent = '离线模式';
-            cloudStatus.className = 'cloud-status offline';
-        }
-    }
+    // 只有当元素存在时才更新
+    if (cloudIcon) cloudIcon.textContent = isOnline ? '☁️✅' : '☁️⚠️';
+    if (cloudText) cloudText.textContent = isOnline ? '云端在线' : '离线模式';
+    if (cloudStatus) cloudStatus.className = isOnline ? 'cloud-status online' : 'cloud-status offline';
 }
 
 // ==================== 上传/下载相关函数 ====================
@@ -252,16 +245,14 @@ async function handleCloudUpload() {
         
         alert('✅ 数据上传成功！');
         
-        // 修复：只在主界面的header中更新状态
+        // 修复：先检查元素是否存在再更新
         const cloudIcon = document.getElementById('cloudIcon');
         const cloudText = document.getElementById('cloudText');
         const cloudStatus = document.getElementById('cloudStatus');
         
-        if (cloudIcon && cloudText && cloudStatus) {
-            cloudIcon.textContent = '☁️✅';
-            cloudText.textContent = '云端已同步';
-            cloudStatus.className = 'cloud-status online';
-        }
+        if (cloudIcon) cloudIcon.textContent = '☁️✅';
+        if (cloudText) cloudText.textContent = '云端已同步';
+        if (cloudStatus) cloudStatus.className = 'cloud-status online';
         
     } catch (error) {
         console.error('上传失败:', error);
@@ -384,6 +375,13 @@ window.cloudSync = {
     refreshFromCloud,
     saveToCloud,
     testCloudConnection,
+    clearLocalCache,
+    showCloudUpload,
+    handleCloudUpload,
+    showCloudDownload,
+    handleCloudDownload,
+    showCloudConfig
+};nnection,
     clearLocalCache,
     showCloudUpload,
     handleCloudUpload,

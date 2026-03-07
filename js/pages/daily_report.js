@@ -2,17 +2,16 @@
 // 权限：r--rwxr--（user只能看，admin可修改，root只能看）
 
 function showDailyReport() {
-    //document.getElementById('contentArea').setAttribute('data-page', 'dailyReport');
+    document.getElementById('contentArea').setAttribute('data-page', 'dailyReport');
     
     const userRole = window.currentUser?.role;
-    const canModify = userRole === 'admin';  // 只有 admin 能修改
+    const canModify = userRole === 'admin';
     
     if (!canModify) {
         showReadOnlyDailyReport();
         return;
     }
     
-    // admin 版本（有修改权限）
     const students = window.utils.getAllStudents().sort((a, b) => parseInt(a.id) - parseInt(b.id));
     const today = window.utils.getBeijingDate();
     const reportedToday = window.appData.dailyReport[today] || [];
@@ -36,12 +35,14 @@ function showDailyReport() {
             </div>
             
             <div class="info-box">
-                <strong>⏰ 操作说明：</strong> 点击汇报状态切换，点击按钮快速加减分
+                <strong>⏰ 操作说明：</strong> 
+                点击汇报状态切换，使用+2/-2按钮调整输入框，点击「批量应用」将输入框的值应用到分数。
             </div>
             
             <div class="btn-grid">
                 <button class="btn btn-primary" onclick="window.dailyReport.selectAllReport()">✅ 全选今日汇报</button>
                 <button class="btn btn-primary" onclick="window.dailyReport.clearAllReport()">🔄 清空今日汇报</button>
+                <button class="btn btn-success" onclick="window.dailyReport.batchApplyFromInputs()">📊 批量应用</button>
                 <button class="btn btn-primary" onclick="window.dailyReport.showReportHistory()">📊 历史记录</button>
             </div>
             
@@ -53,7 +54,7 @@ function showDailyReport() {
                             <th>姓名</th>
                             <th>当前分数</th>
                             <th>今日汇报</th>
-                            <th colspan="3">快速操作</th>
+                            <th colspan="3">调整值</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -71,14 +72,13 @@ function showDailyReport() {
                                         </span>
                                     </td>
                                     <td>
-                                        <button class="action-btn btn-minus" onclick="window.dailyReport.quickAdjust('${student.id}', -2)">-2</button>
+                                        <button class="action-btn btn-minus" onclick="window.dailyReport.adjustInput('${student.id}', -2)">-2</button>
                                     </td>
                                     <td>
-                                        <input type="number" class="score-input" id="input-${student.id}" value="-2" 
-                                               onchange="window.dailyReport.customAdjust('${student.id}', this.value)">
+                                        <input type="number" class="score-input" id="input-${student.id}" value="0" placeholder="调整值">
                                     </td>
                                     <td>
-                                        <button class="action-btn btn-plus" onclick="window.dailyReport.quickAdjust('${student.id}', 2)">+2</button>
+                                        <button class="action-btn btn-plus" onclick="window.dailyReport.adjustInput('${student.id}', 2)">+2</button>
                                     </td>
                                 </tr>
                             `;
@@ -92,13 +92,13 @@ function showDailyReport() {
     window.utils.addViewLog('浏览', '进入每日汇报(管理版)');
 }
 
+// 只读版本
 function showReadOnlyDailyReport() {
     const today = window.utils.getBeijingDate();
     const reportedToday = window.appData.dailyReport[today] || [];
     const myId = window.currentUser.student_id;
     const iReported = reportedToday.includes(myId);
     
-    // user 和 root 都看这个只读版本
     document.getElementById('contentArea').innerHTML = `
         <div class="content-card">
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -142,7 +142,9 @@ function showReadOnlyDailyReport() {
     window.utils.addViewLog('浏览', '进入每日汇报(只读版)');
 }
 
-// 其他函数保持不变...
+// ==================== 核心功能 ====================
+
+// 切换汇报状态
 function toggleReport(studentId) {
     const today = window.utils.getBeijingDate();
     if (!window.appData.dailyReport[today]) {
@@ -163,40 +165,82 @@ function toggleReport(studentId) {
     showDailyReport();
 }
 
-function quickAdjust(studentId, change) {
-    const newScore = window.utils.getStudentScore(studentId) + change;
-    window.appData.scores[studentId][1] = newScore;
-    window.dataManager.saveData('scores');
-    window.utils.addLog('每日汇报调整', studentId, change, newScore, `快速${change > 0 ? '+' : ''}${change}`);
-    window.dataManager.saveToCloud().catch(e => console.warn('上传失败', e));
+// 调整输入框
+function adjustInput(studentId, delta) {
+    const input = document.getElementById(`input-${studentId}`);
+    if (input) {
+        const current = parseInt(input.value) || 0;
+        input.value = current + delta;
+    }
+}
+
+// 批量应用输入框的值
+function batchApplyFromInputs() {
+    let success = 0;
+    let total = 0;
+    
+    window.utils.getAllStudents().forEach(student => {
+        const input = document.getElementById(`input-${student.id}`);
+        if (input) {
+            const change = parseInt(input.value) || 0;
+            if (change !== 0) {
+                window.utils.updateStudentScore(student.id, change, '每日汇报批量调整');
+                success++;
+                total += change;
+            }
+        }
+    });
+    
+    alert(`✅ 成功为 ${success} 名学生调整分数，总变动 ${total} 分`);
     showDailyReport();
 }
 
-function customAdjust(studentId, value) {
-    const change = parseFloat(value);
-    if (isNaN(change)) return;
-    
-    const newScore = window.utils.getStudentScore(studentId) + change;
-    window.appData.scores[studentId][1] = newScore;
-    window.dataManager.saveData('scores');
-    window.utils.addLog('每日汇报调整', studentId, change, newScore, `自定义${change > 0 ? '+' : ''}${change}`);
-    window.dataManager.saveToCloud().catch(e => console.warn('上传失败', e));
-    showDailyReport();
-}
+// ==================== 全选今日汇报（带分数应用）====================
 
 function selectAllReport() {
     const today = window.utils.getBeijingDate();
-    const students = Object.entries(window.appData.scores || {})
-        .filter(([id]) => id !== '0')
-        .map(([id]) => id);
+    const students = window.utils.getAllStudents();
     
-    window.appData.dailyReport[today] = students;
+    // 1. 先把所有学生的汇报状态设为「已汇报」
+    window.appData.dailyReport[today] = students.map(s => s.id);
     window.dataManager.saveData('dailyReport');
-    window.utils.addLog('批量汇报', 'system', 0, 0, '全选今日汇报');
+    
+    // 2. 再把所有输入框的值应用到分数
+    let totalChange = 0;
+    let appliedCount = 0;
+    
+    students.forEach(student => {
+        const input = document.getElementById(`input-${student.id}`);
+        if (input) {
+            const change = parseInt(input.value) || 0;
+            if (change !== 0) {
+                window.utils.updateStudentScore(student.id, change, '全选汇报自动应用');
+                appliedCount++;
+                totalChange += change;
+            }
+        }
+    });
+    
+    // 3. 记录一条系统日志
+    window.utils.addLog(
+        '批量汇报', 
+        'system', 
+        totalChange, 
+        0, 
+        `全选汇报：为 ${appliedCount} 名学生应用输入框值，总变动 ${totalChange} 分`
+    );
+    
+    // 4. 上传到云端
     window.dataManager.saveToCloud().catch(e => console.warn('上传失败', e));
+    
+    // 5. 提示结果
+    alert(`✅ 全选汇报完成：\n• 已汇报状态已标记\n• 为 ${appliedCount} 名学生应用了输入框值\n• 总变动分数：${totalChange}`);
+    
+    // 6. 刷新页面
     showDailyReport();
 }
 
+// 清空今日汇报
 function clearAllReport() {
     const today = window.utils.getBeijingDate();
     window.appData.dailyReport[today] = [];
@@ -206,6 +250,7 @@ function clearAllReport() {
     showDailyReport();
 }
 
+// 显示历史记录
 function showReportHistory() {
     const dates = Object.keys(window.appData.dailyReport || {}).sort().reverse();
     
@@ -227,6 +272,7 @@ function showReportHistory() {
     window.utils.addViewLog('浏览', '查看汇报历史');
 }
 
+// 查看详情
 function viewReportDetail(date) {
     const reported = window.appData.dailyReport[date] || [];
     const students = reported.map(id => {
@@ -250,8 +296,8 @@ function viewReportDetail(date) {
 window.dailyReport = {
     showDailyReport,
     toggleReport,
-    quickAdjust,
-    customAdjust,
+    adjustInput,
+    batchApplyFromInputs,
     selectAllReport,
     clearAllReport,
     showReportHistory,
