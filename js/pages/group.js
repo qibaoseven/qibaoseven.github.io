@@ -1,7 +1,6 @@
 // ==================== 分组管理页面 ====================
 
 function showGroupManagement() {
-    //document.getElementById('contentArea').setAttribute('data-page', 'group');
     const groups = window.appData.groups || {};
     
     document.getElementById('contentArea').innerHTML = `
@@ -122,6 +121,7 @@ function handleGroupCreate() {
     
     window.appData.groups[name] = [];
     window.dataManager.saveData('groups');
+    window.dataManager.saveToCloud().catch(e => console.warn('上传失败', e));
     alert('创建成功');
     window.modal.close();
     showGroupManagement();
@@ -152,12 +152,14 @@ function handleGroupDelete() {
     if (confirm(`确定要删除分组"${name}"吗？`)) {
         delete window.appData.groups[name];
         window.dataManager.saveData('groups');
+        window.dataManager.saveToCloud().catch(e => console.warn('上传失败', e));
         alert('分组已删除');
         window.modal.close();
         showGroupManagement();
     }
 }
 
+// ==================== 修复：添加成员 ====================
 function showGroupAddMember() {
     const groupNames = Object.keys(window.appData.groups || {});
     
@@ -166,6 +168,30 @@ function showGroupAddMember() {
         return;
     }
     
+    // 获取所有学生
+    const allStudents = [];
+    Object.entries(window.appData.scores || {}).forEach(([id, data]) => {
+        if (id === '0') return;
+        
+        let name = '未知';
+        let score = 0;
+        
+        if (Array.isArray(data)) {
+            name = data[0] || '未知';
+            score = typeof data[1] === 'number' ? data[1] : 0;
+        } else if (data && typeof data === 'object') {
+            name = data.name || '未知';
+            score = typeof data.score === 'number' ? data.score : 0;
+        }
+        
+        allStudents.push({
+            id: id,
+            name: name,
+            score: score,
+            display: `${id} - ${name} (${score}分)`
+        });
+    });
+    
     window.modal.show('添加成员', `
         <div style="margin: 20px 0;">
             <label>选择分组：</label>
@@ -173,37 +199,81 @@ function showGroupAddMember() {
                 ${groupNames.map(name => `<option value="${name}">${name}</option>`).join('')}
             </select>
             
-            <div id="addMembersList" style="margin-top: 20px;"></div>
+            <div id="addMembersList" style="margin-top: 20px;">
+                <label>选择学生：</label>
+                <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ffd1b8; padding: 10px; border-radius: 8px;">
+                    ${allStudents.map(s => {
+                        const isInGroup = window.appData.groups[groupNames[0]]?.includes(s.id);
+                        return `
+                            <label style="display: block; margin: 5px; ${isInGroup ? 'opacity: 0.5;' : ''}">
+                                <input type="checkbox" value="${s.id}" class="add-member" ${isInGroup ? 'disabled' : ''}> 
+                                ${s.display} ${isInGroup ? '(已在分组中)' : ''}
+                            </label>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+            
+            <div style="margin-top: 15px;">
+                <label>
+                    <input type="checkbox" onclick="window.group.toggleAllAddMembers(this)"> 全选（只选未加入的）
+                </label>
+            </div>
         </div>
     `, [
         { text: '取消', onclick: 'window.modal.close()' },
         { text: '添加', onclick: 'window.group.handleGroupAddMember()', className: 'btn-primary' }
     ]);
-    
-    setTimeout(() => updateAddMemberList(groupNames[0]), 100);
+}
+
+function toggleAllAddMembers(checkbox) {
+    const checkboxes = document.querySelectorAll('.add-member:not(:disabled)');
+    checkboxes.forEach(cb => cb.checked = checkbox.checked);
 }
 
 function updateAddMemberList(groupName) {
     const members = window.appData.groups[groupName] || [];
     
-    const students = Object.entries(window.appData.scores || {})
-        .filter(([id]) => id !== '0')
-        .map(([id, [name, score]]) => {
-            const inGroup = members.includes(id);
-            return `
-                <label style="display: block; margin: 5px; ${inGroup ? 'opacity: 0.5;' : ''}">
-                    <input type="checkbox" value="${id}" class="add-member" ${inGroup ? 'disabled' : ''}> 
-                    ${id} - ${name} (${score}分) ${inGroup ? '(已在分组中)' : ''}
-                </label>
-            `;
-        }).join('');
+    const allStudents = [];
+    Object.entries(window.appData.scores || {}).forEach(([id, data]) => {
+        if (id === '0') return;
+        
+        let name = '未知';
+        let score = 0;
+        
+        if (Array.isArray(data)) {
+            name = data[0] || '未知';
+            score = typeof data[1] === 'number' ? data[1] : 0;
+        } else if (data && typeof data === 'object') {
+            name = data.name || '未知';
+            score = typeof data.score === 'number' ? data.score : 0;
+        }
+        
+        allStudents.push({
+            id: id,
+            name: name,
+            score: score,
+            display: `${id} - ${name} (${score}分)`
+        });
+    });
     
-    document.getElementById('addMembersList').innerHTML = `
-        <label>选择学生：</label>
-        <div style="max-height: 200px; overflow-y: auto; border: 1px solid #ffd1b8; padding: 10px; border-radius: 8px;">
-            ${students || '<p>暂无学生可选</p>'}
-        </div>
-    `;
+    const listDiv = document.getElementById('addMembersList');
+    if (listDiv) {
+        listDiv.innerHTML = `
+            <label>选择学生：</label>
+            <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ffd1b8; padding: 10px; border-radius: 8px;">
+                ${allStudents.map(s => {
+                    const isInGroup = members.includes(s.id);
+                    return `
+                        <label style="display: block; margin: 5px; ${isInGroup ? 'opacity: 0.5;' : ''}">
+                            <input type="checkbox" value="${s.id}" class="add-member" ${isInGroup ? 'disabled' : ''}> 
+                            ${s.display} ${isInGroup ? '(已在分组中)' : ''}
+                        </label>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
 }
 
 function handleGroupAddMember() {
@@ -217,19 +287,23 @@ function handleGroupAddMember() {
     
     if (!window.appData.groups[groupName]) window.appData.groups[groupName] = [];
     
+    let added = 0;
     checkboxes.forEach(cb => {
         const studentId = cb.value;
         if (!window.appData.groups[groupName].includes(studentId)) {
             window.appData.groups[groupName].push(studentId);
+            added++;
         }
     });
     
     window.dataManager.saveData('groups');
-    alert(`成功添加 ${checkboxes.length} 名学生`);
+    window.dataManager.saveToCloud().catch(e => console.warn('上传失败', e));
+    alert(`✅ 成功添加 ${added} 名学生`);
     window.modal.close();
     showGroupManagement();
 }
 
+// ==================== 移除成员 ====================
 function showGroupRemoveMember() {
     const groupNames = Object.keys(window.appData.groups || {});
     
@@ -246,6 +320,12 @@ function showGroupRemoveMember() {
             </select>
             
             <div id="removeMembersList" style="margin-top: 20px;"></div>
+            
+            <div style="margin-top: 15px;">
+                <label>
+                    <input type="checkbox" onclick="window.group.toggleAllRemoveMembers(this)"> 全选
+                </label>
+            </div>
         </div>
     `, [
         { text: '取消', onclick: 'window.modal.close()' },
@@ -255,22 +335,40 @@ function showGroupRemoveMember() {
     setTimeout(() => showGroupMembers(groupNames[0]), 100);
 }
 
+function toggleAllRemoveMembers(checkbox) {
+    const checkboxes = document.querySelectorAll('.remove-member');
+    checkboxes.forEach(cb => cb.checked = checkbox.checked);
+}
+
 function showGroupMembers(groupName) {
     const members = window.appData.groups[groupName] || [];
     const validMembers = members.filter(id => window.appData.scores[id] && id !== '0');
     
+    const membersList = validMembers.map(id => {
+        let name = '未知';
+        let score = 0;
+        
+        const data = window.appData.scores[id];
+        if (Array.isArray(data)) {
+            name = data[0] || '未知';
+            score = typeof data[1] === 'number' ? data[1] : 0;
+        } else if (data && typeof data === 'object') {
+            name = data.name || '未知';
+            score = typeof data.score === 'number' ? data.score : 0;
+        }
+        
+        return { id, name, score };
+    });
+    
     document.getElementById('removeMembersList').innerHTML = `
         <label>选择成员：</label>
         <div style="max-height: 200px; overflow-y: auto; border: 1px solid #ffd1b8; padding: 10px; border-radius: 8px;">
-            ${validMembers.map(id => {
-                const [name, score] = window.appData.scores[id] || ['未知', 0];
-                return `
-                    <label style="display: block; margin: 5px;">
-                        <input type="checkbox" value="${id}" class="remove-member"> ${id} - ${name} (${score}分)
-                    </label>
-                `;
-            }).join('')}
-            ${validMembers.length === 0 ? '<p style="color: #ff8f4e;">该分组暂无成员</p>' : ''}
+            ${membersList.map(m => `
+                <label style="display: block; margin: 5px;">
+                    <input type="checkbox" value="${m.id}" class="remove-member"> ${m.id} - ${m.name} (${m.score}分)
+                </label>
+            `).join('')}
+            ${membersList.length === 0 ? '<p style="color: #ff8f4e;">该分组暂无成员</p>' : ''}
         </div>
     `;
 }
@@ -284,16 +382,19 @@ function handleGroupRemoveMember() {
         return;
     }
     
+    let removed = 0;
     checkboxes.forEach(cb => {
         const studentId = cb.value;
         const index = window.appData.groups[groupName].indexOf(studentId);
         if (index > -1) {
             window.appData.groups[groupName].splice(index, 1);
+            removed++;
         }
     });
     
     window.dataManager.saveData('groups');
-    alert(`成功移除 ${checkboxes.length} 名学生`);
+    window.dataManager.saveToCloud().catch(e => console.warn('上传失败', e));
+    alert(`✅ 成功移除 ${removed} 名学生`);
     window.modal.close();
     showGroupManagement();
 }
@@ -305,7 +406,12 @@ function showGroupList() {
         <div style="max-height: 400px; overflow-y: auto;">
             ${Object.entries(groups).map(([name, members]) => {
                 const validMembers = members.filter(id => window.appData.scores[id] && id !== '0');
-                const names = validMembers.map(id => window.appData.scores[id][0]).join(', ');
+                const names = validMembers.map(id => {
+                    const data = window.appData.scores[id];
+                    if (Array.isArray(data)) return data[0] || '未知';
+                    if (data && typeof data === 'object') return data.name || '未知';
+                    return '未知';
+                }).join(', ');
                 return `
                     <div style="margin-bottom: 20px; padding: 15px; background: #fff6f0; border-radius: 10px; border-left: 3px solid #ff4e4e;">
                         <h4 style="margin-bottom: 10px; color: #ff4e4e;">🔹 ${name} (${validMembers.length}人)</h4>
@@ -335,7 +441,12 @@ function showGroupAll() {
                 const validMembers = members.filter(id => window.appData.scores[id] && id !== '0');
                 if (validMembers.length === 0) return '';
                 
-                const names = validMembers.map(id => `${window.appData.scores[id][0]}(${id})`).join(' ');
+                const names = validMembers.map(id => {
+                    const data = window.appData.scores[id];
+                    if (Array.isArray(data)) return `${data[0]}(${id})`;
+                    if (data && typeof data === 'object') return `${data.name || '未知'}(${id})`;
+                    return `未知(${id})`;
+                }).join(' ');
                 return `
                     <div style="margin: 10px 0; padding: 10px; background: #fff6f0; border-radius: 8px; border-left: 3px solid #ff9f4e;">
                         <strong style="color: #ff6b4a;">${name}:</strong> <span style="color: #ff8f4e;">${names}</span>
@@ -346,7 +457,12 @@ function showGroupAll() {
             <h4 style="margin-top: 20px; color: #ff4e4e;">📋 未分组学生</h4>
             <div style="background: #fff6f0; padding: 15px; border-radius: 8px; border-left: 3px solid #ffb84e;">
                 ${ungrouped.length > 0 
-                    ? ungrouped.map(id => `${window.appData.scores[id][0]}(${id})`).join(' ')
+                    ? ungrouped.map(id => {
+                        const data = window.appData.scores[id];
+                        if (Array.isArray(data)) return `${data[0]}(${id})`;
+                        if (data && typeof data === 'object') return `${data.name || '未知'}(${id})`;
+                        return `未知(${id})`;
+                    }).join(' ')
                     : '所有学生都已分组'}
             </div>
             
@@ -377,10 +493,13 @@ function showGroupScore() {
             </select>
             
             <label>加分/扣分数值：</label>
-            <input type="number" id="groupScoreChange" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #ffd1b8; border-radius: 8px;">
+            <input type="number" id="groupScoreChange" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #ffd1b8; border-radius: 8px;" 
+                   placeholder="正数为加分，负数为扣分" step="1" min="-999" max="999">
+            <small style="color: #ff8f4e;">建议范围：-50 到 50</small>
             
             <label>原因（可选）：</label>
-            <input type="text" id="groupScoreReason" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #ffd1b8; border-radius: 8px;">
+            <input type="text" id="groupScoreReason" style="width: 100%; padding: 10px; margin: 10px 0; border: 2px solid #ffd1b8; border-radius: 8px;" 
+                   placeholder="请输入原因" maxlength="100">
         </div>
     `, [
         { text: '取消', onclick: 'window.modal.close()' },
@@ -399,9 +518,11 @@ window.group = {
     showGroupAddMember,
     updateAddMemberList,
     handleGroupAddMember,
+    toggleAllAddMembers,
     showGroupRemoveMember,
     showGroupMembers,
     handleGroupRemoveMember,
+    toggleAllRemoveMembers,
     showGroupList,
     showGroupAll,
     showGroupScore

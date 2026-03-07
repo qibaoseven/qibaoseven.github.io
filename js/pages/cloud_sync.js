@@ -1,7 +1,6 @@
 // ==================== 云端同步页面 ====================
 
 function showCloudSync() {
-    //document.getElementById('contentArea').setAttribute('data-page', 'cloudSync');
     if (!window.auth.hasPermission('云端同步')) {
         alert('权限不足');
         return;
@@ -37,6 +36,9 @@ function showCloudSync() {
                 <button class="btn btn-primary" onclick="window.cloudSync.showCloudConfig()">
                     ⚙️ 重新配置
                 </button>
+                <button class="btn btn-danger" onclick="window.cloudSync.clearLocalCache()">
+                    🗑️ 清除缓存
+                </button>
             </div>
             
             <div class="info-box" style="background: #fff6f0;">
@@ -47,96 +49,39 @@ function showCloudSync() {
                 • 每次打开页面都会自动从云端加载最新数据
             </div>
             
-            <div id="cloudStatus" style="margin-top: 20px;"></div>
+            <div id="cloudSyncStatus" style="margin-top: 20px;"></div>
         </div>
     `;
 }
 
-async function refreshFromCloud() {
-    const statusDiv = document.getElementById('cloudStatus');
-    if (statusDiv) {
-        statusDiv.innerHTML = '<div class="info-box">⏳ 正在从云端刷新数据...</div>';
-    }
-    
-    const result = await window.dataManager.loadFromCloud();
-    
-    if (result.success) {
-        statusDiv.innerHTML = `
-            <div class="success-box">
-                ✅ 数据刷新成功！<br>
-                版本号：${window.appData.cloudMeta.updated}<br>
-                时间：${new Date().toLocaleString()}
-            </div>
-        `;
-        
-        // 更新界面
-        if (window.currentUser) {
-            window.auth.renderSidebar();
-            window.dashboard.showDashboard();
-        }
-        
-        // 更新云端状态显示
-        updateCloudStatus(true);
-        
-        window.modal.notify('数据刷新成功！', 'success');
-    } else {
-        statusDiv.innerHTML = `
-            <div class="warning-box">
-                ❌ 刷新失败：${result.error}<br>
-                请检查网络连接后重试。
-            </div>
-        `;
-    }
-}
-
-async function saveToCloud() {
-    const statusDiv = document.getElementById('cloudStatus');
-    if (statusDiv) {
-        statusDiv.innerHTML = '<div class="info-box">⏳ 正在保存数据到云端...</div>';
-    }
-    
-    const result = await window.dataManager.saveToCloud();
-    
-    if (result.success) {
-        statusDiv.innerHTML = `
-            <div class="success-box">
-                ✅ 数据保存成功！<br>
-                新版本号：${window.appData.cloudMeta.updated}<br>
-                时间：${new Date().toLocaleString()}
-            </div>
-        `;
-        
-        updateCloudStatus(true);
-        window.modal.notify('数据已保存到云端！', 'success');
-    } else {
-        statusDiv.innerHTML = `
-            <div class="warning-box">
-                ❌ 保存失败：${result.error}
-            </div>
-        `;
-    }
-}
-
 async function testCloudConnection() {
-    const statusDiv = document.getElementById('cloudStatus');
+    const statusDiv = document.getElementById('cloudSyncStatus');
     if (statusDiv) {
         statusDiv.innerHTML = '<div class="info-box">⏳ 正在测试云端连接...</div>';
     }
     
-    const result = await window.dataManager.testCloudConnection();
-    
-    if (result.success) {
-        statusDiv.innerHTML = `
-            <div class="success-box">
-                ✅ 云端连接正常！<br>
-                数据版本：${result.version}<br>
-                最后同步：${result.lastSync ? new Date(result.lastSync).toLocaleString() : '未知'}
-            </div>
-        `;
-    } else {
+    try {
+        const result = await window.dataManager.testCloudConnection();
+        
+        if (result.success) {
+            statusDiv.innerHTML = `
+                <div class="success-box">
+                    ✅ 云端连接正常！<br>
+                    数据版本：${result.version}<br>
+                    最后同步：${result.lastSync ? new Date(result.lastSync).toLocaleString() : '未知'}
+                </div>
+            `;
+        } else {
+            statusDiv.innerHTML = `
+                <div class="warning-box">
+                    ❌ 云端连接失败：${result.error}
+                </div>
+            `;
+        }
+    } catch (error) {
         statusDiv.innerHTML = `
             <div class="warning-box">
-                ❌ 云端连接失败：${result.error}
+                ❌ 测试失败：${error.message}
             </div>
         `;
     }
@@ -151,15 +96,15 @@ function clearLocalCache() {
 }
 
 function updateCloudStatus(isOnline) {
-    // 只在主界面的header中更新状态
     const cloudIcon = document.getElementById('cloudIcon');
     const cloudText = document.getElementById('cloudText');
     const cloudStatus = document.getElementById('cloudStatus');
     
-    // 只有当元素存在时才更新
     if (cloudIcon) cloudIcon.textContent = isOnline ? '☁️✅' : '☁️⚠️';
     if (cloudText) cloudText.textContent = isOnline ? '云端在线' : '离线模式';
-    if (cloudStatus) cloudStatus.className = isOnline ? 'cloud-status online' : 'cloud-status offline';
+    if (cloudStatus) {
+        cloudStatus.className = isOnline ? 'cloud-status online' : 'cloud-status offline';
+    }
 }
 
 // ==================== 上传/下载相关函数 ====================
@@ -201,59 +146,42 @@ async function handleCloudUpload() {
     
     window.modal.close();
     
-    const statusDiv = document.getElementById('cloudStatus');
+    const statusDiv = document.getElementById('cloudSyncStatus');
     if (statusDiv) {
         statusDiv.innerHTML = '<div class="info-box">⏳ 正在上传数据到云端...</div>';
     }
     
     try {
-        const uploadData = {
-            users: window.appData.users,
-            scores: window.appData.scores,
-            groups: window.appData.groups,
-            rules: window.appData.rules,
-            logs: window.appData.logs,
-            rewards: window.appData.rewards,
-            punishments: window.appData.punishments,
-            userPunishments: window.appData.userPunishments,
-            gold: window.appData.gold,
-            exchangeRate: window.appData.exchangeRate,
-            emoji: window.appData.emoji,
-            dailyReport: window.appData.dailyReport,
-            cloudMeta: {
-                updated: (window.appData.cloudMeta?.updated || 0) + 1,
-                lastSync: new Date().toISOString(),
-                version: '1.0'
-            },
-            timestamp: new Date().toISOString()
-        };
+        const result = await window.dataManager.saveToCloud();
         
-        const result = await window.dataManager.uploadToCloud(uploadData);
-        
-        window.appData.cloudMeta = uploadData.cloudMeta;
-        window.dataManager.saveData('cloudMeta');
-        
-        if (statusDiv) {
-            statusDiv.innerHTML = `
-                <div class="success-box">
-                    ✅ 上传成功！<br>
-                    版本号：${window.appData.cloudMeta.updated}<br>
-                    时间：${new Date().toLocaleString()}
-                </div>
-            `;
+        if (result.success) {
+            if (statusDiv) {
+                statusDiv.innerHTML = `
+                    <div class="success-box">
+                        ✅ 上传成功！<br>
+                        版本号：${window.appData.cloudMeta.updated}<br>
+                        时间：${new Date().toLocaleString()}
+                    </div>
+                `;
+            }
+            
+            alert('✅ 数据上传成功！');
+            
+            // 更新云端状态
+            const cloudIcon = document.getElementById('cloudIcon');
+            const cloudText = document.getElementById('cloudText');
+            const cloudStatus = document.getElementById('cloudStatus');
+            
+            if (cloudIcon) cloudIcon.textContent = '☁️✅';
+            if (cloudText) cloudText.textContent = '云端已同步';
+            if (cloudStatus) cloudStatus.className = 'cloud-status online';
+            
+        } else {
+            if (statusDiv) {
+                statusDiv.innerHTML = `<div class="warning-box">❌ 上传失败：${result.error}</div>`;
+            }
+            alert('❌ 上传失败：' + result.error);
         }
-        
-        alert('✅ 数据上传成功！');
-        
-        // 修复：先检查元素是否存在再更新
-        const cloudIcon = document.getElementById('cloudIcon');
-        const cloudText = document.getElementById('cloudText');
-        const cloudStatus = document.getElementById('cloudStatus');
-        
-        if (cloudIcon) cloudIcon.textContent = '☁️✅';
-        if (cloudText) cloudText.textContent = '云端已同步';
-        if (cloudStatus) cloudStatus.className = 'cloud-status online';
-        
     } catch (error) {
         console.error('上传失败:', error);
         if (statusDiv) {
@@ -293,13 +221,82 @@ async function handleCloudDownload() {
     
     window.modal.close();
     
-    const statusDiv = document.getElementById('cloudStatus');
+    const statusDiv = document.getElementById('cloudSyncStatus');
     if (statusDiv) {
         statusDiv.innerHTML = '<div class="info-box">⏳ 正在从云端下载数据...</div>';
     }
     
     try {
-        const cloudData = await window.dataManager.downloadFromCloud();
+        const result = await window.dataManager.loadFromCloud();
+        
+        if (result.success) {
+            if (statusDiv) {
+                statusDiv.innerHTML = `
+                    <div class="success-box">
+                        ✅ 下载成功！<br>
+                        版本号：${window.appData.cloudMeta.updated}<br>
+                        时间：${new Date().toLocaleString()}
+                    </div>
+                `;
+            }
+            
+            alert('✅ 数据下载成功！');
+            
+            // 更新云端状态
+            updateCloudStatus(true);
+            
+            // 刷新当前页面显示
+            if (window.currentUser) {
+                window.dashboard.showDashboard();
+            }
+            
+        } else {
+            if (statusDiv) {
+                statusDiv.innerHTML = `<div class="warning-box">❌ 下载失败：${result.error}</div>`;
+            }
+            alert('❌ 下载失败：' + result.error);
+        }
+    } catch (error) {
+        console.error('下载失败:', error);
+        if (statusDiv) {
+            statusDiv.innerHTML = `<div class="warning-box">❌ 下载失败：${error.message}</div>`;
+        }
+        alert('❌ 下载失败：' + error.message);
+    }
+}
+
+function showCloudConfig() {
+    window.modal.show('云端配置', `
+        <div style="margin: 20px 0;">
+            <p style="color: #ff6b4a;">当前配置的 Bin ID:</p>
+            <p style="background: #fff6f0; padding: 10px; border-radius: 8px; font-family: monospace; color: #ff4e4e;">${window.CLOUD_CONFIG?.binId || '未设置'}</p>
+            
+            <p style="color: #ff8f4e;">如需修改配置，请直接修改代码中的 CLOUD_CONFIG 变量。</p>
+            
+            <div class="info-box">
+                <strong style="color: #ff4e4e;">如何获取 Bin ID?</strong><br>
+                1. 访问 https://jsonbin.io/<br>
+                2. 注册/登录账号<br>
+                3. 创建新的 Bin<br>
+                4. 复制 Bin ID 和 Master Key
+            </div>
+        </div>
+    `, [
+        { text: '关闭', onclick: 'window.modal.close()' }
+    ]);
+}
+
+// 导出到全局
+window.cloudSync = {
+    showCloudSync,
+    testCloudConnection,
+    clearLocalCache,
+    showCloudUpload,
+    handleCloudUpload,
+    showCloudDownload,
+    handleCloudDownload,
+    showCloudConfig
+}; = await window.dataManager.downloadFromCloud();
         
         if (cloudData.users) window.appData.users = cloudData.users;
         if (cloudData.scores) window.appData.scores = cloudData.scores;

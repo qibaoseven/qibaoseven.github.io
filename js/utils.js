@@ -12,6 +12,17 @@ function formatDateWithMs(date = new Date()) {
     return `${yy}.${mm}.${dd} ${hh}:${min}:${ss}.${ms}`;
 }
 
+// 格式化日期（用于文件名）
+function formatDateForFile(date = new Date()) {
+    const yy = date.getFullYear();
+    const mm = (date.getMonth() + 1).toString().padStart(2, '0');
+    const dd = date.getDate().toString().padStart(2, '0');
+    const hh = date.getHours().toString().padStart(2, '0');
+    const min = date.getMinutes().toString().padStart(2, '0');
+    const ss = date.getSeconds().toString().padStart(2, '0');
+    return `${yy}-${mm}-${dd}_${hh}-${min}-${ss}`;
+}
+
 // 获取北京时间（yyyy-mm-dd）
 function getBeijingDate(date = new Date()) {
     const beijingTime = new Date(date.getTime() + 8 * 60 * 60 * 1000);
@@ -26,7 +37,15 @@ function isFridayAfternoon() {
 
 // 获取学生分数
 function getStudentScore(studentId) {
-    return window.appData?.scores?.[studentId]?.[1] || 0;
+    if (!window.appData?.scores?.[studentId]) return 0;
+    const data = window.appData.scores[studentId];
+    
+    if (Array.isArray(data)) {
+        return typeof data[1] === 'number' ? data[1] : 0;
+    } else if (data && typeof data === 'object') {
+        return typeof data.score === 'number' ? data.score : 0;
+    }
+    return 0;
 }
 
 // 获取学生金币
@@ -38,7 +57,15 @@ function getStudentGold(studentId) {
 function getStudentRank(studentId) {
     const scores = Object.entries(window.appData?.scores || {})
         .filter(([id]) => id !== '0')
-        .map(([id, data]) => ({ id, score: data[1] }))
+        .map(([id, data]) => {
+            let score = 0;
+            if (Array.isArray(data)) {
+                score = typeof data[1] === 'number' ? data[1] : 0;
+            } else if (data && typeof data === 'object') {
+                score = typeof data.score === 'number' ? data.score : 0;
+            }
+            return { id, score };
+        })
         .sort((a, b) => b.score - a.score);
     
     const rank = scores.findIndex(s => s.id === studentId) + 1;
@@ -55,7 +82,7 @@ function getGoldRanking(limit = 999) {
         
         if (Array.isArray(studentData)) {
             studentName = studentData[0] || '未知';
-        } else if (typeof studentData === 'object' && studentData !== null) {
+        } else if (studentData && typeof studentData === 'object') {
             studentName = studentData.name || '未知';
         }
         
@@ -75,20 +102,22 @@ function getTopRanking(limit = 999) {
     
     Object.entries(window.appData?.scores || {}).forEach(([id, data]) => {
         if (id !== '0') {
+            let name = '未知';
+            let score = 0;
+            
             if (Array.isArray(data)) {
-                students.push({
-                    id: id,
-                    name: data[0] || '未知',
-                    score: typeof data[1] === 'number' ? data[1] : 0
-                });
+                name = data[0] || '未知';
+                score = typeof data[1] === 'number' ? data[1] : 0;
+            } else if (data && typeof data === 'object') {
+                name = data.name || '未知';
+                score = typeof data.score === 'number' ? data.score : 0;
             }
-            else if (typeof data === 'object' && data !== null) {
-                students.push({
-                    id: id,
-                    name: data.name || '未知',
-                    score: typeof data.score === 'number' ? data.score : 0
-                });
-            }
+            
+            students.push({
+                id: id,
+                name: name,
+                score: score
+            });
         }
     });
     
@@ -98,10 +127,20 @@ function getTopRanking(limit = 999) {
 // 更新学生分数（自动记录日志 + 上传）
 function updateStudentScore(studentId, change, reason = '') {
     if (!window.appData?.scores?.[studentId]) return false;
-    const oldScore = window.appData.scores[studentId][1];
-    window.appData.scores[studentId][1] = oldScore + change;
-    saveData('scores');
-    addLog('分数调整', studentId, change, window.appData.scores[studentId][1], reason);
+    
+    const oldScore = getStudentScore(studentId);
+    const newScore = oldScore + change;
+    
+    // 更新分数
+    const data = window.appData.scores[studentId];
+    if (Array.isArray(data)) {
+        data[1] = newScore;
+    } else if (data && typeof data === 'object') {
+        data.score = newScore;
+    }
+    
+    window.dataManager.saveData('scores');
+    addLog('分数调整', studentId, change, newScore, reason);
     
     window.dataManager.saveToCloud().catch(e => console.warn('上传失败', e));
     
@@ -116,7 +155,7 @@ function updateStudentGold(studentId, change) {
     }
     window.appData.gold[studentId].amount += change;
     window.appData.gold[studentId].last_updated = formatDateWithMs();
-    saveData('gold');
+    window.dataManager.saveData('gold');
     
     window.dataManager.saveToCloud().catch(e => console.warn('上传失败', e));
     
@@ -125,7 +164,15 @@ function updateStudentGold(studentId, change) {
 
 // 添加日志（超详细版）
 function addLog(action, studentId, scoreChange, currentScore, reason = '') {
-    const studentName = window.appData?.scores?.[studentId]?.[0] || '未知';
+    const studentData = window.appData?.scores?.[studentId];
+    let studentName = '未知';
+    
+    if (Array.isArray(studentData)) {
+        studentName = studentData[0] || '未知';
+    } else if (studentData && typeof studentData === 'object') {
+        studentName = studentData.name || '未知';
+    }
+    
     const log = {
         timestamp: formatDateWithMs(),
         action,
@@ -141,7 +188,7 @@ function addLog(action, studentId, scoreChange, currentScore, reason = '') {
     if (!window.appData.logs) window.appData.logs = [];
     window.appData.logs.unshift(log);
     if (window.appData.logs.length > 200) window.appData.logs.pop();
-    saveData('logs');
+    window.dataManager.saveData('logs');
 }
 
 // 添加纯浏览日志
@@ -163,7 +210,7 @@ function addViewLog(action, detail = '') {
     if (!window.appData.logs) window.appData.logs = [];
     window.appData.logs.unshift(log);
     if (window.appData.logs.length > 200) window.appData.logs.pop();
-    saveData('logs');
+    window.dataManager.saveData('logs');
 }
 
 // 更新汇率
@@ -172,7 +219,7 @@ function updateExchangeRate() {
     rate.score_to_gold = rate.score_to_gold * (0.95 + Math.random() * 0.1);
     rate.gold_to_score = rate.gold_to_score * (0.95 + Math.random() * 0.1);
     rate.last_updated = formatDateWithMs();
-    saveData('exchangeRate');
+    window.dataManager.saveData('exchangeRate');
 }
 
 // 抽取奖励
@@ -217,46 +264,21 @@ function toggleAllReasonStudents(checkbox) {
     document.querySelectorAll('.batch-reason-student').forEach(cb => cb.checked = checkbox.checked);
 }
 
-// 读取文件夹中的JSON文件
-async function readJSONFilesFromDirectory(files) {
-    const results = {
-        success: [],
-        failed: [],
-        data: {}
-    };
-    
-    const filePromises = [];
-    
-    for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (file.name.endsWith('.json')) {
-            const promise = new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    try {
-                        const jsonData = JSON.parse(e.target.result);
-                        const fileName = file.name.replace('.json', '');
-                        results.data[fileName] = jsonData;
-                        results.success.push(file.name);
-                        resolve({ success: true, file: file.name });
-                    } catch (error) {
-                        console.error(`解析文件 ${file.name} 失败:`, error);
-                        results.failed.push(file.name);
-                        resolve({ success: false, file: file.name, error });
-                    }
-                };
-                reader.onerror = function() {
-                    results.failed.push(file.name);
-                    resolve({ success: false, file: file.name });
-                };
-                reader.readAsText(file);
-            });
-            filePromises.push(promise);
-        }
-    }
-    
-    await Promise.all(filePromises);
-    return results;
+// 读取JSON文件
+async function readJSONFile(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => {
+            try {
+                const data = JSON.parse(e.target.result);
+                resolve(data);
+            } catch (error) {
+                reject(error);
+            }
+        };
+        reader.onerror = e => reject(e.target.error);
+        reader.readAsText(file);
+    });
 }
 
 // 文件映射配置
@@ -276,66 +298,27 @@ const FILE_TO_DATA_KEY = {
     'auto_events': 'autoEvents'
 };
 
-// 导入文件夹数据
-async function importFolderData(files) {
-    const readResult = await readJSONFilesFromDirectory(files);
-    
-    if (readResult.success.length === 0) {
-        return {
-            success: false,
-            message: '没有找到有效的JSON文件',
-            details: readResult
-        };
-    }
-    
-    const imported = {};
-    const mapping = {};
-    
-    Object.entries(readResult.data).forEach(([fileName, fileData]) => {
-        if (FILE_TO_DATA_KEY[fileName]) {
-            const dataKey = FILE_TO_DATA_KEY[fileName];
-            imported[dataKey] = fileData;
-            mapping[fileName] = dataKey;
-        } else {
-            const upperFileName = fileName.toUpperCase();
-            for (const [key, storageKey] of Object.entries(window.dataManager.STORAGE_KEYS)) {
-                const dataKey = key.toLowerCase();
-                if (storageKey.includes(fileName) || fileName.includes(dataKey)) {
-                    imported[dataKey] = fileData;
-                    mapping[fileName] = dataKey;
-                    break;
-                }
-            }
-        }
-    });
-    
-    return {
-        success: true,
-        imported,
-        mapping,
-        details: readResult
-    };
-}
-
 // 获取所有学生列表
 function getAllStudents() {
     const students = [];
     Object.entries(window.appData?.scores || {}).forEach(([id, data]) => {
         if (id !== '0') {
+            let name = '未知';
+            let score = 0;
+            
             if (Array.isArray(data)) {
-                students.push({
-                    id: id,
-                    name: data[0] || '未知',
-                    score: typeof data[1] === 'number' ? data[1] : 0
-                });
+                name = data[0] || '未知';
+                score = typeof data[1] === 'number' ? data[1] : 0;
+            } else if (data && typeof data === 'object') {
+                name = data.name || '未知';
+                score = typeof data.score === 'number' ? data.score : 0;
             }
-            else if (typeof data === 'object' && data !== null) {
-                students.push({
-                    id: id,
-                    name: data.name || '未知',
-                    score: typeof data.score === 'number' ? data.score : 0
-                });
-            }
+            
+            students.push({
+                id: id,
+                name: name,
+                score: score
+            });
         }
     });
     return students;
@@ -350,8 +333,7 @@ function getStudentData(studentId) {
             name: data[0] || '未知',
             score: typeof data[1] === 'number' ? data[1] : 0
         };
-    }
-    else if (typeof data === 'object' && data !== null) {
+    } else if (data && typeof data === 'object') {
         return {
             name: data.name || '未知',
             score: typeof data.score === 'number' ? data.score : 0
@@ -365,29 +347,62 @@ function getStudentName(studentId) {
     return student?.name || '未知';
 }
 
-// 字体检测函数
-function checkFontLoaded(fontName) {
-    const testDiv = document.createElement('div');
-    testDiv.style.cssText = `position: absolute; left: -9999px; top: -9999px; font-family: "${fontName}", monospace;`;
-    testDiv.textContent = '测试字体abcdefg1234567890';
-    document.body.appendChild(testDiv);
-    
-    const fontWidth = testDiv.offsetWidth;
-    
-    testDiv.style.fontFamily = 'monospace';
-    const fallbackWidth = testDiv.offsetWidth;
-    
-    document.body.removeChild(testDiv);
-    
-    return fontWidth !== fallbackWidth;
-}
-
-// ==================== 系统检测 ====================
-
-// 获取操作系统（iPad 统一返回 'macos'）
+// 系统检测
 function getOS() {
     const ua = navigator.userAgent;
     const platform = navigator.platform;
+    
+    if (/Windows NT/.test(ua)) return 'windows';
+    
+    const isIPad = /iPad/.test(ua) || 
+                  (/Mac/.test(platform) && navigator.maxTouchPoints > 1) ||
+                  (/Mac/.test(platform) && /Safari/.test(ua) && /Mobile/.test(ua));
+    
+    if (isIPad) return 'macos';
+    if (/Mac/.test(platform)) return 'macos';
+    if (/Linux/.test(platform) && !/Android/.test(ua)) return 'linux';
+    if (/Android/.test(ua)) return 'android';
+    if (/iPhone|iPod/.test(ua)) return 'ios';
+    
+    return 'unknown';
+}
+
+function shouldUseLandscapeMode() {
+    const os = getOS();
+    const isLandscape = window.innerWidth > window.innerHeight;
+    
+    if (os === 'macos') return true;
+    return isLandscape;
+}
+
+// ==================== 导出 ====================
+window.utils = {
+    formatDateWithMs,
+    formatDateForFile,
+    getBeijingDate,
+    isFridayAfternoon,
+    getStudentScore,
+    getStudentGold,
+    getStudentRank,
+    getGoldRanking,
+    getTopRanking,
+    updateStudentScore,
+    updateStudentGold,
+    addLog,
+    addViewLog,
+    updateExchangeRate,
+    drawReward,
+    filterStudents,
+    toggleAllStudents,
+    toggleAllReasonStudents,
+    readJSONFile,
+    FILE_TO_DATA_KEY,
+    getAllStudents,
+    getStudentData,
+    getStudentName,
+    getOS,
+    shouldUseLandscapeMode
+};navigator.platform;
     
     // Windows
     if (/Windows NT/.test(ua)) return 'windows';
