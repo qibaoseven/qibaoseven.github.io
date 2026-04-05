@@ -377,6 +377,86 @@ function shouldUseLandscapeMode() {
     return isLandscape;
 }
 
+// 简单的SHA-256哈希函数（使用Web Crypto API）
+async function hashPassword(password) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+}
+
+// 验证密码
+async function verifyPassword(inputPassword, storedHash) {
+    // 检查是否是 hashed: 前缀格式
+    if (storedHash && storedHash.startsWith('hashed:')) {
+        const hashValue = storedHash.substring(7);
+        const inputHash = await hashPassword(inputPassword);
+        return inputHash === hashValue;
+    }
+    // 兼容旧格式（明文密码）
+    return inputPassword === storedHash;
+}
+
+// 创建密码哈希（带前缀）
+async function createPasswordHash(password) {
+    const hash = await hashPassword(password);
+    return `hashed:${hash}`;
+}
+
+// 检查密码是否需要更新（旧格式）
+function isPasswordLegacy(storedPassword) {
+    return storedPassword && typeof storedPassword === 'string' && !storedPassword.startsWith('hashed:');
+}
+
+// ==================== 批量迁移密码 ====================
+async function migrateAllPasswordsToHash() {
+    let migratedCount = 0;
+    let failedCount = 0;
+    const results = [];
+    
+    for (const [username, user] of Object.entries(window.appData.users)) {
+        if (user.password && isPasswordLegacy(user.password)) {
+            try {
+                // 将明文密码转换为哈希格式
+                const hashedPassword = await createPasswordHash(user.password);
+                user.password = hashedPassword;
+                migratedCount++;
+                results.push(`✅ ${username}: 已迁移`);
+                console.log(`密码迁移成功: ${username}`);
+            } catch (error) {
+                failedCount++;
+                results.push(`❌ ${username}: 迁移失败 - ${error.message}`);
+                console.error(`密码迁移失败: ${username}`, error);
+            }
+        }
+    }
+    
+    if (migratedCount > 0 || failedCount > 0) {
+        // 保存迁移后的数据
+        window.dataManager.saveData('users');
+        
+        // 记录迁移日志
+        window.utils.addLog('密码迁移', 'system', 0, 0, 
+            `批量密码哈希迁移: 成功 ${migratedCount} 个, 失败 ${failedCount} 个`);
+        
+        console.log(`密码迁移完成: 成功 ${migratedCount}, 失败 ${failedCount}`);
+    }
+    
+    return { migratedCount, failedCount, results };
+}
+
+// 检查是否有旧格式密码
+function hasLegacyPasswords() {
+    for (const user of Object.values(window.appData.users)) {
+        if (user.password && isPasswordLegacy(user.password)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // ==================== 导出 ====================
 window.utils = {
     formatDateWithMs,
@@ -403,5 +483,11 @@ window.utils = {
     getStudentData,
     getStudentName,
     getOS,
-    shouldUseLandscapeMode
+    shouldUseLandscapeMode,
+    hashPassword,
+    verifyPassword,
+    createPasswordHash,
+    isPasswordLegacy,
+    migrateAllPasswordsToHash,
+    hasLegacyPasswords
 };

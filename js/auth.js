@@ -55,7 +55,8 @@ function renderUserSelect() {
 }
 
 // ==================== 处理登录 ====================
-function handleLogin() {
+// 处理登录（支持新旧密码格式）
+async function handleLogin() {
     const username = document.getElementById('userSelect').value;
     const password = document.getElementById('password').value;
     
@@ -65,9 +66,25 @@ function handleLogin() {
     }
     
     const user = window.appData.users[username];
-    if (!user || user.password !== password) {
+    if (!user) {
+        alert('用户不存在');
+        return;
+    }
+    
+    // 使用新的验证方法
+    const isValid = await window.utils.verifyPassword(password, user.password);
+    
+    if (!isValid) {
         alert('密码错误');
         return;
+    }
+    
+    // 注意：此时密码应该已经被 runAutoEvents 迁移过了
+    // 但为了安全，如果还有旧格式，也在这里迁移
+    if (window.utils.isPasswordLegacy(user.password)) {
+        user.password = await window.utils.createPasswordHash(password);
+        window.dataManager.saveData('users');
+        console.log(`用户 ${username} 的密码已自动升级为哈希格式`);
     }
     
     window.currentUser = { ...user, username };

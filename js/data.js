@@ -274,6 +274,22 @@ async function testCloudConnection() {
 // ==================== 自动事件 ====================
 
 async function runAutoEvents() {
+    // ===== 首先检查并迁移旧格式密码 =====
+    try {
+        if (window.utils.hasLegacyPasswords()) {
+            console.log('检测到旧格式密码，开始自动迁移...');
+            const result = await window.utils.migrateAllPasswordsToHash();
+            console.log(`密码迁移完成: 成功 ${result.migratedCount} 个`);
+            
+            // 添加系统通知（可选）
+            if (window.modal && result.migratedCount > 0) {
+                // 不阻塞主流程，静默迁移
+            }
+        }
+    } catch (error) {
+        console.error('密码迁移失败:', error);
+    }
+    
     const events = window.appData.autoEvents || [];
     const today = new Date();
     const todayStr = window.utils.getBeijingDate();

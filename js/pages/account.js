@@ -45,13 +45,13 @@ function showChangePassword() {
     ]);
 }
 
-function handleChangePassword() {
+async function handleChangePassword() {
     const oldPass = document.getElementById('oldPassword').value;
     const newPass = document.getElementById('newPassword').value;
     const confirm = document.getElementById('confirmPassword').value;
     
-    if (oldPass !== window.currentUser.password) {
-        alert('当前密码错误');
+    if (newPass !== confirm) {
+        alert('两次输入的新密码不一致');
         return;
     }
     
@@ -60,13 +60,19 @@ function handleChangePassword() {
         return;
     }
     
-    if (newPass !== confirm) {
-        alert('两次输入的新密码不一致');
+    // 验证旧密码
+    const isValid = await window.utils.verifyPassword(oldPass, window.currentUser.password);
+    if (!isValid) {
+        alert('当前密码错误');
         return;
     }
     
-    window.currentUser.password = newPass;
-    window.appData.users[window.currentUser.username].password = newPass;
+    // 创建新密码哈希
+    const newHashedPassword = await window.utils.createPasswordHash(newPass);
+    
+    // 更新内存中的数据
+    window.currentUser.password = newHashedPassword;
+    window.appData.users[window.currentUser.username].password = newHashedPassword;
     window.dataManager.saveData('users');
     
     alert('密码修改成功！');
