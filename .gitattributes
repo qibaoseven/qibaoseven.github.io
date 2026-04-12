@@ -1,0 +1,22 @@
+# Normalize line endings
+* text=auto eol=lf
+
+# Ensure these files are always treated as text
+*.html text
+*.css text
+*.js text
+*.json text
+*.md text
+*.txt text
+
+# Ensure these are binary files
+*.ico binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+
+# Detect and prevent accidental merge conflicts
+conflict-marker-size = 32
