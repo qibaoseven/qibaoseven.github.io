@@ -1,6 +1,50 @@
 // ========================================
 // Homework 子系统 - 基于位压缩存储
 // ========================================
+const { createHmac, randomBytes, createCipheriv, createDecipheriv } = require('crypto');
+
+// 与 api.js 同款的 AES-256-GCM 加密
+const ALGORITHM = 'aes-256-gcm';
+const HW_MAGIC = 'HWSF';
+
+function deriveKey(password) {
+    return createHmac('sha256', password).digest();
+}
+
+// 加密二进制数据，使用魔数(HW_MAGIC)内嵌用于完整性验证，不加 JSON 前缀
+function encryptBlob(buffer, password) {
+    const key = deriveKey(password);
+    const iv = randomBytes(12);
+    const cipher = createCipheriv(ALGORITHM, key, iv);
+
+    const payload = Buffer.concat([Buffer.from(HW_MAGIC), buffer]);
+    const encrypted = Buffer.concat([cipher.update(payload), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+
+    const result = Buffer.concat([iv, authTag, encrypted]);
+    return result.toString('base64');
+}
+
+// 解密二进制数据，返回原始 buffer；校验魔数与 GCM 认证
+function decryptBlob(encoded, password) {
+    const key = deriveKey(password);
+    const buffer = Buffer.from(encoded, 'base64');
+
+    const iv = buffer.subarray(0, 12);
+    const authTag = buffer.subarray(12, 28);
+    const encrypted = buffer.subarray(28);
+
+    const decipher = createDecipheriv(ALGORITHM, key, iv);
+    decipher.setAuthTag(authTag);
+    const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+
+    // 校验魔数，确保解密成功且数据格式正确
+    if (decrypted.length < HW_MAGIC.length || decrypted.subarray(0, HW_MAGIC.length).toString() !== HW_MAGIC) {
+        throw new Error('数据格式错误');
+    }
+
+    return decrypted.subarray(HW_MAGIC.length);
+}
 
 /**
  * 将字节数组转换为位数组(从高位到低位)
@@ -34,81 +78,93 @@ function fromBitarray(bits) {
 
 /**
  * 加载班级作业数据
+ * @param {Object} classStore 存储桶实例
+ * @param {string} password 班级密码（解密必需）
  */
-async function loadHomeworkData(classStore) {
-    try {
-        const raw = await classStore.get('homework_data');
-        if (!raw) return null;
-        
-        const buffer = Buffer.from(raw, 'base64');
-        let offset = 0;
-        
-        // 读取头部
-        const magic = buffer.subarray(offset, offset + 4).toString();
-        offset += 4;
-        if (magic !== 'HWSF') {
-            throw new Error('无效的数据格式');
-        }
-        
-        const students = buffer.readUInt16LE(offset);
-        offset += 2;
-        
-        const daysSince1970 = buffer.readUInt32LE(offset);
-        offset += 4;
-        const dateFrom = new Date(1970, 0, 1);
-        dateFrom.setDate(dateFrom.getDate() + daysSince1970);
-        
-        const subjects = buffer.readUInt8(offset);
-        offset += 1;
-        
-        // 读取数据部分
-        const dataBytes = buffer.subarray(offset);
-        const bitList = toBitarray(dataBytes);
-        
-        // 实际学生数量 = 读取的学生数 + 1(0号机器人)
-        const actualStudents = students + 1;
-        
-        // 计算总天数
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const totalDays = Math.floor((today - dateFrom) / (24 * 60 * 60 * 1000)) + 1;
-        
-        // 每个学生每天的作业数据占 subjects 个 bit
-        const bitsPerStudentPerDay = subjects;
-        const bitsPerDay = bitsPerStudentPerDay * actualStudents;
-        
-        // 三维列表:[天数][学生ID][科目]
-        const homeworkData = [];
-        
-        for (let dayOffset = 0; dayOffset < totalDays; dayOffset++) {
-            const startBit = dayOffset * bitsPerDay;
-            const endBit = startBit + bitsPerDay;
-            
-            if (endBit > bitList.length) break;
-            
-            const dayStudents = [];
-            for (let studentIdx = 0; studentIdx < actualStudents; studentIdx++) {
-                const studentStart = startBit + studentIdx * subjects;
-                const studentHomework = bitList.slice(studentStart, studentStart + subjects);
-                dayStudents.push(studentHomework);
-            }
-            homeworkData.push(dayStudents);
-        }
-        
-        return homeworkData;
-    } catch (error) {
-        console.error('加载作业数据失败:', error);
-        return null;
+/**
+ * 加载班级作业数据（必须是加密格式）。
+ * 数据不存在时返回 null；数据存在但密码错误 / 格式非法时抛出错误。
+ * @param {Object} classStore 存储桶实例
+ * @param {string} password 班级密码（解密必需）
+ */
+async function loadHomeworkData(classStore, password) {
+    if (!password) {
+        throw new Error('读取作业数据需要密码');
     }
+    const raw = await classStore.get('homework_data');
+    if (!raw) return null;
+
+    // 解密（解密失败或魔数校验不通过会抛错，向上传播以拒绝错误密码）
+    const buffer = decryptBlob(raw, password);
+    let offset = 0;
+    
+    // 读取头部
+    const magic = buffer.subarray(offset, offset + 4).toString();
+    offset += 4;
+    if (magic !== 'HWSF') {
+        throw new Error('无效的数据格式');
+    }
+    
+    const students = buffer.readUInt16LE(offset);
+    offset += 2;
+    
+    const daysSince1970 = buffer.readUInt32LE(offset);
+    offset += 4;
+    const dateFrom = new Date(1970, 0, 1);
+    dateFrom.setDate(dateFrom.getDate() + daysSince1970);
+    
+    const subjects = buffer.readUInt8(offset);
+    offset += 1;
+    
+    // 读取数据部分
+    const dataBytes = buffer.subarray(offset);
+    const bitList = toBitarray(dataBytes);
+    
+    // 实际学生数量 = 读取的学生数 + 1(0号机器人)
+    const actualStudents = students + 1;
+    
+    // 计算总天数
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const totalDays = Math.floor((today - dateFrom) / (24 * 60 * 60 * 1000)) + 1;
+    
+    // 每个学生每天的作业数据占 subjects 个 bit
+    const bitsPerDay = subjects * actualStudents;
+    
+    // 三维列表:[天数][学生ID][科目]
+    const homeworkData = [];
+    
+    for (let dayOffset = 0; dayOffset < totalDays; dayOffset++) {
+        const startBit = dayOffset * bitsPerDay;
+        const endBit = startBit + bitsPerDay;
+        
+        if (endBit > bitList.length) break;
+        
+        const dayStudents = [];
+        for (let studentIdx = 0; studentIdx < actualStudents; studentIdx++) {
+            const studentStart = startBit + studentIdx * subjects;
+            const studentHomework = bitList.slice(studentStart, studentStart + subjects);
+            dayStudents.push(studentHomework);
+        }
+        homeworkData.push(dayStudents);
+    }
+    
+    return homeworkData;
 }
 
 /**
  * 保存班级作业数据
+ * @param {Object} classStore 存储桶实例
+ * @param {Array} homeworkData 三维作业数据
+ * @param {string} password 班级密码（用于加密）
  */
-async function saveHomeworkData(classStore, homeworkData) {
+async function saveHomeworkData(classStore, homeworkData, password = null) {
     try {
         if (!homeworkData || homeworkData.length === 0) {
             throw new Error('没有数据可保存');
+        }
+        if (!password) {
+            throw new Error('保存作业数据需要密码');
         }
         
         // 从三维列表获取参数
@@ -159,8 +215,9 @@ async function saveHomeworkData(classStore, homeworkData) {
         // 写入数据
         dataBytes.copy(buffer, offset);
         
-        // 保存到存储桶(base64编码)
-        await classStore.set('homework_data', buffer.toString('base64'));
+        // 加密后保存到存储桶(base64编码)
+        const encrypted = encryptBlob(buffer, password);
+        await classStore.set('homework_data', encrypted);
         
         return true;
     } catch (error) {
@@ -189,8 +246,11 @@ function getDateRange(homeworkData) {
 /**
  * 初始化班级作业系统
  */
-async function initHomeworkSystem(classStore, config) {
+async function initHomeworkSystem(classStore, config, password = null) {
     const { studentCount, subjectCount, subjectNames, startDate = null } = config;
+    if (!password) {
+        throw new Error('初始化作业系统需要密码');
+    }
     
     // 参数验证
     if (studentCount === undefined || studentCount < 1) {
@@ -237,7 +297,7 @@ async function initHomeworkSystem(classStore, config) {
     const homeworkData = [firstDay];
     
     // 保存作业数据
-    const saveResult = await saveHomeworkData(classStore, homeworkData);
+    const saveResult = await saveHomeworkData(classStore, homeworkData, password);
     if (!saveResult) {
         throw new Error('保存作业数据失败');
     }
@@ -285,9 +345,12 @@ async function isHomeworkInitialized(classStore) {
 /**
  * 更新某个学生在某天某学科的作业提交情况
  */
-async function updateHomework(classStore, studentId, targetDate, subjectId) {
+async function updateHomework(classStore, studentId, targetDate, subjectId, password = null) {
+    if (!password) {
+        throw new Error('更新作业需要密码');
+    }
     // 加载现有数据
-    let homeworkData = await loadHomeworkData(classStore);
+    let homeworkData = await loadHomeworkData(classStore, password);
     if (!homeworkData) {
         // 如果数据不存在,创建新的数据结构:默认从今天开始,1个学生,1个学科
         homeworkData = [[[0], [0]]]; // 0号机器人 + 1号学生
@@ -346,19 +409,22 @@ async function updateHomework(classStore, studentId, targetDate, subjectId) {
     homeworkData[dayIndex][studentId][subjectId] = 1;
     
     // 保存数据
-    return await saveHomeworkData(classStore, homeworkData);
+    return await saveHomeworkData(classStore, homeworkData, password);
 }
 
 /**
  * 添加一整天的数据
  */
-async function addDayData(classStore, dayData, targetDate = null) {
+async function addDayData(classStore, dayData, targetDate = null, password = null) {
+    if (!password) {
+        throw new Error('添加作业数据需要密码');
+    }
     if (targetDate === null) {
         targetDate = new Date();
     }
     
     // 加载现有数据
-    let homeworkData = await loadHomeworkData(classStore);
+    let homeworkData = await loadHomeworkData(classStore, password);
     if (!homeworkData) {
         homeworkData = [];
     }
@@ -427,14 +493,16 @@ async function addDayData(classStore, dayData, targetDate = null) {
     }
     
     // 保存数据
-    return await saveHomeworkData(classStore, homeworkData);
+    return await saveHomeworkData(classStore, homeworkData, password);
 }
 
 /**
  * 获取作业数据(用于查询)
+ * @param {Object} classStore 存储桶实例
+ * @param {string} password 班级密码（用于解密）
  */
-async function getHomeworkData(classStore) {
-    const data = await loadHomeworkData(classStore);
+async function getHomeworkData(classStore, password = null) {
+    const data = await loadHomeworkData(classStore, password);
     if (!data) {
         return { exists: false, data: null };
     }
@@ -444,8 +512,8 @@ async function getHomeworkData(classStore) {
 /**
  * 获取指定学生在某天的作业状态
  */
-async function getStudentHomework(classStore, studentId, targetDate) {
-    const homeworkData = await loadHomeworkData(classStore);
+async function getStudentHomework(classStore, studentId, targetDate, password = null) {
+    const homeworkData = await loadHomeworkData(classStore, password);
     if (!homeworkData) {
         return null;
     }

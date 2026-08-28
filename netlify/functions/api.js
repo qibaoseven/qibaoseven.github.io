@@ -334,7 +334,7 @@ exports.handler = async (event) => {
                     subjectCount: subject_count,
                     subjectNames: subject_names,
                     startDate: start_date || null
-                });
+                }, password);
                 return handleResponse(200, result);
             } catch (error) {
                 return handleResponse(400, { error: error.message });
@@ -380,8 +380,26 @@ exports.handler = async (event) => {
             const classIdMatch = requestPath.match(/class_\d+/);
             const classId = classIdMatch ? classIdMatch[0] : '';
             
+            const password = headers['x-password'];
+            const passwordHash = headers['x-password-hash'];
+            if (!password || !passwordHash) {
+                return handleResponse(401, { error: '需要密码验证' });
+            }
             const classStore = await getStoreForClass(classId);
-            const result = await getHomeworkData(classStore);
+            const storedHash = await classStore.get('password_hash');
+            if (storedHash && passwordHash !== storedHash) {
+                return handleResponse(401, { error: '密码错误' });
+            }
+            
+            let result;
+            try {
+                result = await getHomeworkData(classStore, password);
+            } catch (e) {
+                if (e.message.includes('Unsupported state') || e.message.includes('数据格式错误')) {
+                    return handleResponse(401, { error: '密码错误' });
+                }
+                throw e;
+            }
             
             if (!result.exists) {
                 return handleResponse(404, { error: '作业数据不存在' });
@@ -461,35 +479,51 @@ exports.handler = async (event) => {
             const url = new URL(requestPath, 'http://localhost');
             const targetDate = url.searchParams.get('date');
             
+            const password = headers['x-password'];
+            const passwordHash = headers['x-password-hash'];
+            if (!password || !passwordHash) {
+                return handleResponse(401, { error: '需要密码验证' });
+            }
             const classStore = await getStoreForClass(classId);
+            const storedHash = await classStore.get('password_hash');
+            if (storedHash && passwordHash !== storedHash) {
+                return handleResponse(401, { error: '密码错误' });
+            }
             
-            if (targetDate) {
-                const data = await getStudentHomework(classStore, studentId, targetDate);
-                if (data === null) {
-                    return handleResponse(404, { error: '未找到数据' });
-                }
-                return handleResponse(200, { date: targetDate, studentId, homework: data });
-            } else {
-                const result = await getHomeworkData(classStore);
-                if (!result.exists) {
-                    return handleResponse(404, { error: '作业数据不存在' });
-                }
-                
-                const studentData = [];
-                const { dateFrom, totalDays } = require('./homework').getDateRange(result.data);
-                
-                for (let day = 0; day < result.data.length; day++) {
-                    if (studentId < result.data[day].length) {
-                        const currentDate = new Date(dateFrom);
-                        currentDate.setDate(currentDate.getDate() + day);
-                        studentData.push({
-                            date: currentDate.toISOString().split('T')[0],
-                            homework: result.data[day][studentId]
-                        });
+            try {
+                if (targetDate) {
+                    const data = await getStudentHomework(classStore, studentId, targetDate, password);
+                    if (data === null) {
+                        return handleResponse(404, { error: '未找到数据' });
                     }
+                    return handleResponse(200, { date: targetDate, studentId, homework: data });
+                } else {
+                    const result = await getHomeworkData(classStore, password);
+                    if (!result.exists) {
+                        return handleResponse(404, { error: '作业数据不存在' });
+                    }
+                    
+                    const studentData = [];
+                    const { dateFrom, totalDays } = require('./homework').getDateRange(result.data);
+                    
+                    for (let day = 0; day < result.data.length; day++) {
+                        if (studentId < result.data[day].length) {
+                            const currentDate = new Date(dateFrom);
+                            currentDate.setDate(currentDate.getDate() + day);
+                            studentData.push({
+                                date: currentDate.toISOString().split('T')[0],
+                                homework: result.data[day][studentId]
+                            });
+                        }
+                    }
+                    
+                    return handleResponse(200, { studentId, data: studentData });
                 }
-                
-                return handleResponse(200, { studentId, data: studentData });
+            } catch (e) {
+                if (e.message.includes('Unsupported state') || e.message.includes('数据格式错误')) {
+                    return handleResponse(401, { error: '密码错误' });
+                }
+                throw e;
             }
         }
         
@@ -518,13 +552,16 @@ exports.handler = async (event) => {
             }
             
             try {
-                const result = await updateHomework(classStore, student_id, target_date, subject_id);
+                const result = await updateHomework(classStore, student_id, target_date, subject_id, password);
                 if (result) {
                     return handleResponse(200, { message: '更新成功', student_id, target_date, subject_id });
                 } else {
                     return handleResponse(500, { error: '保存失败' });
                 }
             } catch (error) {
+                if (error.message.includes('Unsupported state') || error.message.includes('数据格式错误')) {
+                    return handleResponse(401, { error: '密码错误' });
+                }
                 return handleResponse(400, { error: error.message });
             }
         }
@@ -554,7 +591,7 @@ exports.handler = async (event) => {
             }
             
             try {
-                const result = await addDayData(classStore, day_data, target_date);
+                const result = await addDayData(classStore, day_data, target_date, password);
                 if (result) {
                     return handleResponse(200, {
                         message: '添加成功',
@@ -564,6 +601,9 @@ exports.handler = async (event) => {
                     return handleResponse(500, { error: '保存失败' });
                 }
             } catch (error) {
+                if (error.message.includes('Unsupported state') || error.message.includes('数据格式错误')) {
+                    return handleResponse(401, { error: '密码错误' });
+                }
                 return handleResponse(400, { error: error.message });
             }
         }
