@@ -1,0 +1,97 @@
+<!-- ========================================
+     StudentOS v0.43 (build v1)
+     ======================================== -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>StudentOS 班级管理系统</title>
+    <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
+    <link rel="apple-touch-icon" sizes="185x185" href="assets/apple-touch-icon.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 班级选择界面 -->
+        <div class="class-select-screen" id="classSelectScreen">
+            <div class="class-select-header">
+                <h1>🏫 StudentOS</h1>
+                <div class="subtitle">选择您的班级</div>
+            </div>
+            <div class="class-slider-container" id="classSlider"></div>
+            <input type="password" class="class-password-input" id="classPassword" placeholder="班级密码">
+            <div class="btn-group">
+                <button class="btn btn-primary" id="enterClassBtn">🔓 进入班级</button>
+                <button class="btn" id="importFromJsonBinBtn">📥 从 JsonBin 导入</button>
+                <button class="btn" id="createEmptyClassBtn">➕ 手动创建班级</button>
+            </div>
+        </div>
+
+        <!-- 登录界面 -->
+        <div class="login-screen" id="loginScreen" style="display: none;">
+            <div class="login-header">
+                <h1>🎓 StudentOS</h1>
+                <div class="subtitle">班级管理系统</div>
+            </div>
+            <div class="login-box">
+                <select class="user-select" id="userSelect">
+                    <option value="">请选择账号...</option>
+                </select>
+                <input type="password" class="password-input" id="password" placeholder="请输入密码">
+                <button class="login-btn" onclick="window.auth.handleLogin()">登录系统</button>
+            </div>
+        </div>
+
+        <!-- 主界面 -->
+        <div class="main-screen" id="mainScreen" style="display: none;">
+            <div class="header">
+                <div class="user-info">
+                    <span class="user-avatar" id="userAvatar" onclick="window.account.showAvatarSelector()">👤</span>
+                    <div class="user-details">
+                        <div class="user-name" id="userDisplayName">加载中...</div>
+                        <div class="user-role" id="userRole">学生</div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <div class="friday-badge" id="fridayBadge">⏰ 抽奖时间：周五下午</div>
+                </div>
+            </div>
+            <div class="main-content">
+                <div class="sidebar" id="sidebar"></div>
+                <div class="content-area" id="contentArea"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通用模态框 -->
+    <div class="modal" id="modal">
+        <div class="modal-content" id="modalContent">
+            <div class="modal-title" id="modalTitle"></div>
+            <div id="modalBody"></div>
+            <div class="modal-buttons" id="modalButtons"></div>
+        </div>
+    </div>
+
+    <script src="js/utils.js"></script>
+    <script src="js/data.js"></script>
+    <script src="js/components/modal.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/pages/dashboard.js"></script>
+    <script src="js/pages/my_score.js"></script>
+    <script src="js/pages/score.js"></script>
+    <script src="js/pages/group.js"></script>
+    <script src="js/pages/rank.js"></script>
+    <script src="js/pages/daily_report.js"></script>
+    <script src="js/pages/gacha.js"></script>
+    <script src="js/pages/punishment.js"></script>
+    <script src="js/pages/gold.js"></script>
+    <script src="js/pages/logs.js"></script>
+    <script src="js/pages/backup.js"></script>
+    <script src="js/pages/account.js"></script>
+    <script src="js/pages/auto_events.js"></script>
+    <script src="js/pages/positions.js"></script>
+    <script src="js/pages/class_select.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

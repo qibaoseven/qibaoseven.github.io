@@ -1,0 +1,6 @@
+file.py
+input.txt
+node_modules/
+netlify/functions/*.zip
+.DS_Store
+*.log
