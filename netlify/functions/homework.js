@@ -1,12 +1,10 @@
-// homework.js
-const { encryptData, decryptData } = require('./api');
-const { getStoreForClass } = require('./blobs');
+// ========================================
+// Homework 子系统 - 基于位压缩存储
+// ========================================
 
-const MAGIC = 'HWSF';
-const VERSION = 1;
-const SUBJECT_NAME_LEN = 12;
-
-// ==================== 位操作 ====================
+/**
+ * 将字节数组转换为位数组(从高位到低位)
+ */
 function toBitarray(bytes) {
     const bits = [];
     for (const byte of bytes) {
@@ -17,6 +15,9 @@ function toBitarray(bytes) {
     return bits;
 }
 
+/**
+ * 将位数组转换回字节数组
+ */
 function fromBitarray(bits) {
     const result = [];
     for (let i = 0; i < bits.length; i += 8) {
@@ -31,279 +32,457 @@ function fromBitarray(bits) {
     return Buffer.from(result);
 }
 
-// ==================== 编解码 ====================
-function encodeHeader(students, dateFrom, subjectNames) {
-    const nameBuffer = Buffer.alloc(subjectNames.length * SUBJECT_NAME_LEN);
-    subjectNames.forEach((name, i) => {
-        const bytes = Buffer.from(name, 'utf8');
-        if (bytes.length > SUBJECT_NAME_LEN) {
-            bytes.copy(nameBuffer, i * SUBJECT_NAME_LEN, 0, SUBJECT_NAME_LEN);
-        } else {
-            bytes.copy(nameBuffer, i * SUBJECT_NAME_LEN);
-        }
-    });
-
-    const header = Buffer.alloc(4 + 2 + 2 + 4 + 1);
-    let offset = 0;
-    header.write(MAGIC, offset, 4, 'utf8');
-    offset += 4;
-    header.writeUInt16LE(VERSION, offset);
-    offset += 2;
-    header.writeUInt16LE(students, offset);
-    offset += 2;
-    header.writeUInt32LE(dateFrom, offset);
-    offset += 4;
-    header.writeUInt8(subjectNames.length, offset);
-    offset += 1;
-
-    return Buffer.concat([header, nameBuffer]);
-}
-
-function decodeHeader(buffer) {
-    let offset = 0;
-    const magic = buffer.subarray(offset, offset + 4).toString('utf8');
-    offset += 4;
-    if (magic !== MAGIC) throw new Error('无效的作业文件格式');
-
-    const version = buffer.readUInt16LE(offset);
-    offset += 2;
-    if (version !== VERSION) throw new Error(`不支持的版本: ${version}`);
-
-    const students = buffer.readUInt16LE(offset);
-    offset += 2;
-
-    const dateFrom = buffer.readUInt32LE(offset);
-    offset += 4;
-
-    const subjectCount = buffer.readUInt8(offset);
-    offset += 1;
-
-    const subjectNames = [];
-    for (let i = 0; i < subjectCount; i++) {
-        const slice = buffer.subarray(offset, offset + SUBJECT_NAME_LEN);
-        const name = slice.toString('utf8').replace(/\0/g, '').trim();
-        subjectNames.push(name || `学科${i}`);
-        offset += SUBJECT_NAME_LEN;
-    }
-
-    const bitData = buffer.subarray(offset);
-    return { version, students, dateFrom, subjectNames, bitData };
-}
-
-// ==================== 存储操作 ====================
-async function saveHomework(classId, homeworkData, password) {
-    // homeworkData: { students, dateFrom, subjectNames, bitData }
-    const header = encodeHeader(
-        homeworkData.students,
-        homeworkData.dateFrom,
-        homeworkData.subjectNames
-    );
-    const full = Buffer.concat([header, homeworkData.bitData]);
-    const encoded = full.toString('base64');
-    const encrypted = encryptData(encoded, password);
-    const store = await getStoreForClass(classId);
-    await store.set('homework', encrypted);
-    return true;
-}
-
-async function loadHomework(classId, password) {
-    const store = await getStoreForClass(classId);
-    const encrypted = await store.get('homework');
-    if (!encrypted) return null;
-
+/**
+ * 加载班级作业数据
+ */
+async function loadHomeworkData(classStore) {
     try {
-        const decoded = decryptData(encrypted, password);
-        const buffer = Buffer.from(decoded, 'base64');
-        return decodeHeader(buffer);
-    } catch (e) {
-        console.error('加载作业失败:', e);
+        const raw = await classStore.get('homework_data');
+        if (!raw) return null;
+        
+        const buffer = Buffer.from(raw, 'base64');
+        let offset = 0;
+        
+        // 读取头部
+        const magic = buffer.subarray(offset, offset + 4).toString();
+        offset += 4;
+        if (magic !== 'HWSF') {
+            throw new Error('无效的数据格式');
+        }
+        
+        const students = buffer.readUInt16LE(offset);
+        offset += 2;
+        
+        const daysSince1970 = buffer.readUInt32LE(offset);
+        offset += 4;
+        const dateFrom = new Date(1970, 0, 1);
+        dateFrom.setDate(dateFrom.getDate() + daysSince1970);
+        
+        const subjects = buffer.readUInt8(offset);
+        offset += 1;
+        
+        // 读取数据部分
+        const dataBytes = buffer.subarray(offset);
+        const bitList = toBitarray(dataBytes);
+        
+        // 实际学生数量 = 读取的学生数 + 1(0号机器人)
+        const actualStudents = students + 1;
+        
+        // 计算总天数
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const totalDays = Math.floor((today - dateFrom) / (24 * 60 * 60 * 1000)) + 1;
+        
+        // 每个学生每天的作业数据占 subjects 个 bit
+        const bitsPerStudentPerDay = subjects;
+        const bitsPerDay = bitsPerStudentPerDay * actualStudents;
+        
+        // 三维列表:[天数][学生ID][科目]
+        const homeworkData = [];
+        
+        for (let dayOffset = 0; dayOffset < totalDays; dayOffset++) {
+            const startBit = dayOffset * bitsPerDay;
+            const endBit = startBit + bitsPerDay;
+            
+            if (endBit > bitList.length) break;
+            
+            const dayStudents = [];
+            for (let studentIdx = 0; studentIdx < actualStudents; studentIdx++) {
+                const studentStart = startBit + studentIdx * subjects;
+                const studentHomework = bitList.slice(studentStart, studentStart + subjects);
+                dayStudents.push(studentHomework);
+            }
+            homeworkData.push(dayStudents);
+        }
+        
+        return homeworkData;
+    } catch (error) {
+        console.error('加载作业数据失败:', error);
         return null;
     }
 }
 
-// ==================== 业务操作 ====================
-async function getHomeworkData(classId, password) {
-    const data = await loadHomework(classId, password);
-    if (!data) return null;
-    return data;
-}
-
-async function updateHomework(classId, studentId, targetDate, subjectId, password) {
-    // 加载数据
-    let data = await loadHomework(classId, password);
-    
-    // 如果不存在,创建默认数据
-    if (!data) {
-        const today = Math.floor(Date.now() / 86400000);
-        const subjectNames = ['语文', '数学', '英语', '物理', '化学'];
-        const students = 50;
-        const bitsPerDay = students * subjectNames.length;
-        const bytesNeeded = Math.ceil(bitsPerDay / 8);
-        const bitData = Buffer.alloc(bytesNeeded, 0);
+/**
+ * 保存班级作业数据
+ */
+async function saveHomeworkData(classStore, homeworkData) {
+    try {
+        if (!homeworkData || homeworkData.length === 0) {
+            throw new Error('没有数据可保存');
+        }
         
-        data = {
-            students,
-            dateFrom: today,
-            subjectNames,
-            bitData
-        };
+        // 从三维列表获取参数
+        const totalDays = homeworkData.length;
+        const actualStudents = homeworkData[0].length;
+        const students = actualStudents - 1; // 减去0号机器人
+        const subjects = homeworkData[0][0].length;
+        
+        // 计算起始日期(从今天往前推 totalDays - 1 天)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const dateFrom = new Date(today);
+        dateFrom.setDate(dateFrom.getDate() - (totalDays - 1));
+        const daysSince1970 = Math.floor((dateFrom - new Date(1970, 0, 1)) / (24 * 60 * 60 * 1000));
+        
+        // 将三维列表转换为位列表
+        const bitList = [];
+        for (let day = 0; day < totalDays; day++) {
+            for (let student = 0; student < actualStudents; student++) {
+                bitList.push(...homeworkData[day][student]);
+            }
+        }
+        
+        // 补齐到8的倍数
+        while (bitList.length % 8 !== 0) {
+            bitList.push(0);
+        }
+        
+        // 转换为字节
+        const dataBytes = fromBitarray(bitList);
+        
+        // 构建完整数据
+        const headerSize = 4 + 2 + 4 + 1; // HWSF + students + date + subjects
+        const totalSize = headerSize + dataBytes.length;
+        const buffer = Buffer.alloc(totalSize);
+        let offset = 0;
+        
+        // 写入头部
+        buffer.write('HWSF', offset, 4);
+        offset += 4;
+        buffer.writeUInt16LE(students, offset);
+        offset += 2;
+        buffer.writeUInt32LE(daysSince1970, offset);
+        offset += 4;
+        buffer.writeUInt8(subjects, offset);
+        offset += 1;
+        
+        // 写入数据
+        dataBytes.copy(buffer, offset);
+        
+        // 保存到存储桶(base64编码)
+        await classStore.set('homework_data', buffer.toString('base64'));
+        
+        return true;
+    } catch (error) {
+        console.error('保存作业数据失败:', error);
+        return false;
     }
-
-    // 验证参数
-    if (studentId < 0 || studentId >= data.students) {
-        throw new Error(`学生ID无效: ${studentId}`);
-    }
-    if (subjectId < 0 || subjectId >= data.subjectNames.length) {
-        throw new Error(`学科ID无效: ${subjectId}`);
-    }
-
-    // 计算日期偏移
-    const today = Math.floor(Date.now() / 86400000);
-    let dayOffset = targetDate - data.dateFrom;
-    
-    // 如果目标日期在起始日期之前,需要扩展数据
-    if (dayOffset < 0) {
-        // 在前面补零
-        const daysToAdd = -dayOffset;
-        const bitsPerDay = data.students * data.subjectNames.length;
-        const bytesPerDay = Math.ceil(bitsPerDay / 8);
-        const newSize = data.bitData.length + daysToAdd * bytesPerDay;
-        const newBitData = Buffer.alloc(newSize, 0);
-        // 复制旧数据到后面
-        data.bitData.copy(newBitData, daysToAdd * bytesPerDay);
-        data.bitData = newBitData;
-        data.dateFrom = targetDate;
-        dayOffset = 0;
-    }
-    
-    // 如果目标日期在最后一天之后,需要扩展
-    const bitsPerDay = data.students * data.subjectNames.length;
-    const bytesPerDay = Math.ceil(bitsPerDay / 8);
-    const maxDays = Math.floor(data.bitData.length / bytesPerDay);
-    if (dayOffset >= maxDays) {
-        const daysToAdd = dayOffset - maxDays + 1;
-        const newSize = data.bitData.length + daysToAdd * bytesPerDay;
-        const newBitData = Buffer.alloc(newSize, 0);
-        data.bitData.copy(newBitData);
-        data.bitData = newBitData;
-    }
-
-    // 定位并设置 bit
-    const startBit = dayOffset * bitsPerDay + studentId * data.subjectNames.length + subjectId;
-    const byteIndex = Math.floor(startBit / 8);
-    const bitIndex = startBit % 8;
-    data.bitData[byteIndex] |= (1 << (7 - bitIndex));
-
-    // 保存
-    await saveHomework(classId, data, password);
-    return true;
 }
 
-async function addHomeworkDay(classId, dayData, targetDate, password) {
-    // dayData: [student0_homework_bits, student1_homework_bits, ...]
-    // 每个 student_homework_bits 是一个数组,[1,0,1,0,1,0,1,0]
+/**
+ * 获取当前数据的日期范围
+ */
+function getDateRange(homeworkData) {
+    if (!homeworkData || homeworkData.length === 0) {
+        return { dateFrom: null, dateTo: null, totalDays: 0 };
+    }
     
-    let data = await loadHomework(classId, password);
-    if (!data) {
-        // 创建默认数据
-        const today = Math.floor(Date.now() / 86400000);
-        const subjectNames = Array(dayData[0].length).fill(0).map((_, i) => `学科${i}`);
-        const students = dayData.length;
-        data = {
-            students,
-            dateFrom: today,
-            subjectNames,
-            bitData: Buffer.alloc(0)
-        };
-    }
-
-    // 验证
-    if (dayData.length !== data.students) {
-        throw new Error(`学生数量不匹配: 期望 ${data.students}, 实际 ${dayData.length}`);
-    }
-    for (const student of dayData) {
-        if (student.length !== data.subjectNames.length) {
-            throw new Error(`学科数量不匹配: 期望 ${data.subjectNames.length}, 实际 ${student.length}`);
-        }
-    }
-
-    // 转换 dayData 为 bit 列表
-    const bitList = [];
-    for (const student of dayData) {
-        bitList.push(...student);
-    }
-
-    // 计算日期偏移
-    let dayOffset = targetDate - data.dateFrom;
-    const bitsPerDay = data.students * data.subjectNames.length;
-    const bytesPerDay = Math.ceil(bitsPerDay / 8);
-
-    // 扩展数据
-    if (dayOffset < 0) {
-        const daysToAdd = -dayOffset;
-        const newSize = data.bitData.length + daysToAdd * bytesPerDay;
-        const newBitData = Buffer.alloc(newSize, 0);
-        data.bitData.copy(newBitData, daysToAdd * bytesPerDay);
-        data.bitData = newBitData;
-        data.dateFrom = targetDate;
-        dayOffset = 0;
-    }
-
-    const maxDays = Math.floor(data.bitData.length / bytesPerDay);
-    if (dayOffset >= maxDays) {
-        const daysToAdd = dayOffset - maxDays + 1;
-        const newSize = data.bitData.length + daysToAdd * bytesPerDay;
-        const newBitData = Buffer.alloc(newSize, 0);
-        data.bitData.copy(newBitData);
-        data.bitData = newBitData;
-    }
-
-    // 写入位数据
-    const startBit = dayOffset * bitsPerDay;
-    const bitBytes = fromBitarray(bitList);
-    bitBytes.copy(data.bitData, Math.floor(startBit / 8));
-
-    await saveHomework(classId, data, password);
-    return true;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const totalDays = homeworkData.length;
+    const dateFrom = new Date(today);
+    dateFrom.setDate(dateFrom.getDate() - (totalDays - 1));
+    
+    return { dateFrom, dateTo: today, totalDays };
 }
 
-async function exportHomework(classId, password) {
-    const data = await loadHomework(classId, password);
-    if (!data) return null;
-
-    const bitsPerDay = data.students * data.subjectNames.length;
-    const bytesPerDay = Math.ceil(bitsPerDay / 8);
-    const totalDays = Math.floor(data.bitData.length / bytesPerDay);
-
-    const result = [];
-    for (let day = 0; day < totalDays; day++) {
-        const startByte = day * bytesPerDay;
-        const dayBytes = data.bitData.subarray(startByte, startByte + bytesPerDay);
-        const bits = toBitarray(dayBytes);
-        const dayStudents = [];
-        for (let student = 0; student < data.students; student++) {
-            const startBit = student * data.subjectNames.length;
-            const studentBits = bits.slice(startBit, startBit + data.subjectNames.length);
-            dayStudents.push(studentBits);
-        }
-        result.push(dayStudents);
+/**
+ * 初始化班级作业系统
+ */
+async function initHomeworkSystem(classStore, config) {
+    const { studentCount, subjectCount, subjectNames, startDate = null } = config;
+    
+    // 参数验证
+    if (studentCount === undefined || studentCount < 1) {
+        throw new Error('学生数量必须大于0');
     }
-
+    if (subjectCount === undefined || subjectCount < 1) {
+        throw new Error('学科数量必须大于0');
+    }
+    if (!subjectNames || typeof subjectNames !== 'object') {
+        throw new Error('请提供学科名称映射');
+    }
+    
+    // 验证学科名称是否完整
+    const nameKeys = Object.keys(subjectNames).map(Number).sort();
+    const expectedKeys = Array.from({ length: subjectCount }, (_, i) => i);
+    if (JSON.stringify(nameKeys) !== JSON.stringify(expectedKeys)) {
+        throw new Error(`学科名称映射不完整,需要包含 0 到 ${subjectCount - 1} 的所有学科`);
+    }
+    
+    // 检查是否有空名称
+    for (let i = 0; i < subjectCount; i++) {
+        if (!subjectNames[i] || subjectNames[i].trim() === '') {
+            throw new Error(`学科 ${i} 的名称不能为空`);
+        }
+    }
+    
+    // 检查是否已存在数据
+    const existing = await classStore.get('homework_meta');
+    if (existing) {
+        throw new Error('该班级已初始化作业系统,如需重新初始化请先删除数据');
+    }
+    
+    // 计算起始日期
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const start = startDate ? new Date(startDate) : today;
+    start.setHours(0, 0, 0, 0);
+    
+    // 实际学生数 = 学生数量 + 1(0号机器人)
+    const actualStudents = studentCount + 1;
+    
+    // 创建第一天数据(全0)
+    const firstDay = Array(actualStudents).fill(null).map(() => Array(subjectCount).fill(0));
+    const homeworkData = [firstDay];
+    
+    // 保存作业数据
+    const saveResult = await saveHomeworkData(classStore, homeworkData);
+    if (!saveResult) {
+        throw new Error('保存作业数据失败');
+    }
+    
+    // 保存元数据(学科名称等)
+    const meta = {
+        studentCount,
+        subjectCount,
+        subjectNames,
+        initializedAt: new Date().toISOString(),
+        startDate: start.toISOString().split('T')[0]
+    };
+    await classStore.set('homework_meta', JSON.stringify(meta));
+    
     return {
-        students: data.students,
-        dateFrom: data.dateFrom,
-        subjectNames: data.subjectNames,
-        data: result
+        success: true,
+        message: '作业系统初始化成功',
+        meta: {
+            studentCount,
+            subjectCount,
+            subjectNames,
+            actualStudents,
+            startDate: start.toISOString().split('T')[0]
+        }
     };
 }
 
+/**
+ * 获取作业系统元数据
+ */
+async function getHomeworkMeta(classStore) {
+    const metaRaw = await classStore.get('homework_meta');
+    if (!metaRaw) return null;
+    return JSON.parse(metaRaw);
+}
+
+/**
+ * 检查作业系统是否已初始化
+ */
+async function isHomeworkInitialized(classStore) {
+    const meta = await getHomeworkMeta(classStore);
+    return meta !== null;
+}
+
+/**
+ * 更新某个学生在某天某学科的作业提交情况
+ */
+async function updateHomework(classStore, studentId, targetDate, subjectId) {
+    // 加载现有数据
+    let homeworkData = await loadHomeworkData(classStore);
+    if (!homeworkData) {
+        // 如果数据不存在,创建新的数据结构:默认从今天开始,1个学生,1个学科
+        homeworkData = [[[0], [0]]]; // 0号机器人 + 1号学生
+    }
+    
+    // 获取当前数据参数
+    let actualStudents = homeworkData[0].length;
+    let subjects = homeworkData[0][0].length;
+    let totalDays = homeworkData.length;
+    
+    // 计算当前数据的起始日期
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dateFrom = new Date(today);
+    dateFrom.setDate(dateFrom.getDate() - (totalDays - 1));
+    
+    // 计算目标日期的索引
+    const targetDateObj = new Date(targetDate);
+    targetDateObj.setHours(0, 0, 0, 0);
+    let dayIndex = Math.floor((targetDateObj - dateFrom) / (24 * 60 * 60 * 1000));
+    
+    // 如果目标日期在数据范围之外,需要扩展
+    if (dayIndex < 0) {
+        // 目标日期在起始日期之前,在前面插入天数
+        const daysToAdd = -dayIndex;
+        for (let i = 0; i < daysToAdd; i++) {
+            const newDay = Array(actualStudents).fill(null).map(() => Array(subjects).fill(0));
+            homeworkData.unshift(newDay);
+        }
+        dayIndex = 0;
+    } else if (dayIndex >= totalDays) {
+        // 目标日期在最后一天之后,需要在后面追加天数
+        const daysToAdd = dayIndex - totalDays + 1;
+        for (let i = 0; i < daysToAdd; i++) {
+            const newDay = Array(actualStudents).fill(null).map(() => Array(subjects).fill(0));
+            homeworkData.push(newDay);
+        }
+        dayIndex = totalDays;
+    }
+    
+    // 更新实际学生数和学科数(可能已变化)
+    actualStudents = homeworkData[0].length;
+    subjects = homeworkData[0][0].length;
+    
+    // 检查学生ID是否有效(应该大于0,小于实际学生数)
+    if (studentId <= 0 || studentId >= actualStudents) {
+        throw new Error(`无效的学生ID: ${studentId}`);
+    }
+    
+    // 检查学科ID是否有效
+    if (subjectId < 0 || subjectId >= subjects) {
+        throw new Error(`无效的学科ID: ${subjectId}`);
+    }
+    
+    // 更新数据(将对应位置设为1表示已提交)
+    homeworkData[dayIndex][studentId][subjectId] = 1;
+    
+    // 保存数据
+    return await saveHomeworkData(classStore, homeworkData);
+}
+
+/**
+ * 添加一整天的数据
+ */
+async function addDayData(classStore, dayData, targetDate = null) {
+    if (targetDate === null) {
+        targetDate = new Date();
+    }
+    
+    // 加载现有数据
+    let homeworkData = await loadHomeworkData(classStore);
+    if (!homeworkData) {
+        homeworkData = [];
+    }
+    
+    // 检查数据格式
+    if (!Array.isArray(dayData) || dayData.length === 0) {
+        throw new Error('无效的数据格式');
+    }
+    
+    const actualStudents = dayData.length;
+    const subjects = dayData[0].length;
+    
+    // 检查所有学生数据长度是否一致
+    for (const student of dayData) {
+        if (!Array.isArray(student) || student.length !== subjects) {
+            throw new Error('学生数据长度不一致');
+        }
+    }
+    
+    // 如果已有数据,需要保持学生数量和学科数量一致
+    if (homeworkData.length > 0) {
+        const existingStudents = homeworkData[0].length;
+        const existingSubjects = homeworkData[0][0].length;
+        
+        if (existingStudents !== actualStudents) {
+            throw new Error(`学生数量不匹配: 现有 ${existingStudents}, 新数据 ${actualStudents}`);
+        }
+        if (existingSubjects !== subjects) {
+            throw new Error(`学科数量不匹配: 现有 ${existingSubjects}, 新数据 ${subjects}`);
+        }
+        
+        // 计算当前数据的起始日期
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const totalDays = homeworkData.length;
+        const dateFrom = new Date(today);
+        dateFrom.setDate(dateFrom.getDate() - (totalDays - 1));
+        
+        // 计算目标日期的索引
+        const targetDateObj = new Date(targetDate);
+        targetDateObj.setHours(0, 0, 0, 0);
+        let dayIndex = Math.floor((targetDateObj - dateFrom) / (24 * 60 * 60 * 1000));
+        
+        // 如果目标日期在数据范围之外,需要扩展
+        if (dayIndex < 0) {
+            const daysToAdd = -dayIndex;
+            for (let i = 0; i < daysToAdd; i++) {
+                const newDay = Array(actualStudents).fill(null).map(() => Array(subjects).fill(0));
+                homeworkData.unshift(newDay);
+            }
+            dayIndex = 0;
+        } else if (dayIndex >= totalDays) {
+            const daysToAdd = dayIndex - totalDays + 1;
+            for (let i = 0; i < daysToAdd; i++) {
+                const newDay = Array(actualStudents).fill(null).map(() => Array(subjects).fill(0));
+                homeworkData.push(newDay);
+            }
+            dayIndex = totalDays;
+        }
+        
+        // 替换对应日期的数据
+        homeworkData[dayIndex] = dayData;
+    } else {
+        // 如果没有现有数据,直接添加
+        homeworkData.push(dayData);
+    }
+    
+    // 保存数据
+    return await saveHomeworkData(classStore, homeworkData);
+}
+
+/**
+ * 获取作业数据(用于查询)
+ */
+async function getHomeworkData(classStore) {
+    const data = await loadHomeworkData(classStore);
+    if (!data) {
+        return { exists: false, data: null };
+    }
+    return { exists: true, data };
+}
+
+/**
+ * 获取指定学生在某天的作业状态
+ */
+async function getStudentHomework(classStore, studentId, targetDate) {
+    const homeworkData = await loadHomeworkData(classStore);
+    if (!homeworkData) {
+        return null;
+    }
+    
+    // 计算日期索引
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const totalDays = homeworkData.length;
+    const dateFrom = new Date(today);
+    dateFrom.setDate(dateFrom.getDate() - (totalDays - 1));
+    
+    const targetDateObj = new Date(targetDate);
+    targetDateObj.setHours(0, 0, 0, 0);
+    const dayIndex = Math.floor((targetDateObj - dateFrom) / (24 * 60 * 60 * 1000));
+    
+    if (dayIndex < 0 || dayIndex >= totalDays) {
+        return null;
+    }
+    
+    if (studentId < 0 || studentId >= homeworkData[dayIndex].length) {
+        return null;
+    }
+    
+    return homeworkData[dayIndex][studentId];
+}
+
 module.exports = {
-    saveHomework,
-    loadHomework,
-    getHomeworkData,
-    updateHomework,
-    addHomeworkDay,
-    exportHomework,
     toBitarray,
-    fromBitarray
+    fromBitarray,
+    loadHomeworkData,
+    saveHomeworkData,
+    getDateRange,
+    initHomeworkSystem,
+    getHomeworkMeta,
+    isHomeworkInitialized,
+    updateHomework,
+    addDayData,
+    getHomeworkData,
+    getStudentHomework
 };

@@ -3,7 +3,15 @@
 // ========================================
 const { createHmac, createHash, randomBytes, createCipheriv, createDecipheriv } = require('crypto');
 const { initBlobs, getStoreForClass, getClassesList, saveClassesList, getTokens, saveTokens } = require('./blobs');
-const homework = require('./homework');
+const {
+    initHomeworkSystem,
+    getHomeworkMeta,
+    isHomeworkInitialized,
+    updateHomework,
+    addDayData,
+    getHomeworkData,
+    getStudentHomework
+} = require('./homework');
 
 const JSON_PREFIX = 'JSON:';
 const ALGORITHM = 'aes-256-gcm';
@@ -72,7 +80,7 @@ exports.handler = async (event) => {
     const corsHeaders = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Content-Type, X-Password, X-Password-Hash',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, DELETE'
     };
     
     if (httpMethod === 'OPTIONS') {
@@ -86,10 +94,6 @@ exports.handler = async (event) => {
     });
     
     try {
-        // ============================================
-        // 班级管理接口
-        // ============================================
-        
         // GET /api/classes
         if (httpMethod === 'GET' && requestPath.includes('/api/classes')) {
             const classes = await getClassesList();
@@ -236,200 +240,6 @@ exports.handler = async (event) => {
             return handleResponse(200, { message: '保存成功' });
         }
         
-        // ============================================
-        // 作业管理接口
-        // ============================================
-        
-        // GET /api/class/{id}/homework/raw - 下载原始二进制文件
-        if (httpMethod === 'GET' && requestPath.includes('/api/class/') && requestPath.includes('/homework/raw')) {
-            const classIdMatch = requestPath.match(/class_\d+/);
-            const classId = classIdMatch ? classIdMatch[0] : '';
-            const password = headers['x-password'];
-            const passwordHash = headers['x-password-hash'];
-            
-            if (!password || !passwordHash) {
-                return handleResponse(400, { error: '缺少密码参数' });
-            }
-            
-            const classStore = await getStoreForClass(classId);
-            const storedHash = await classStore.get('password_hash');
-            if (storedHash && passwordHash !== storedHash) {
-                return handleResponse(401, { error: '密码错误' });
-            }
-            
-            try {
-                const encrypted = await classStore.get('homework');
-                if (!encrypted) {
-                    return handleResponse(404, { error: '作业文件不存在' });
-                }
-                
-                const decoded = decryptData(encrypted, password);
-                const buffer = Buffer.from(decoded, 'base64');
-                
-                return {
-                    statusCode: 200,
-                    headers: {
-                        'Content-Type': 'application/octet-stream',
-                        'Content-Disposition': `attachment; filename="homework_${classId}.hw"`,
-                        ...corsHeaders
-                    },
-                    body: buffer.toString('base64'),
-                    isBase64Encoded: true
-                };
-            } catch (e) {
-                return handleResponse(500, { error: `下载失败: ${e.message}` });
-            }
-        }
-        
-        // GET /api/class/{id}/homework - 获取作业数据(带日期参数返回某天,不带返回全部)
-        if (httpMethod === 'GET' && requestPath.includes('/api/class/') && requestPath.includes('/homework') && !requestPath.includes('/raw')) {
-            const classIdMatch = requestPath.match(/class_\d+/);
-            const classId = classIdMatch ? classIdMatch[0] : '';
-            const password = headers['x-password'];
-            const passwordHash = headers['x-password-hash'];
-            
-            // 解析查询参数
-            const url = new URL(requestPath, 'http://localhost');
-            const dateParam = url.searchParams.get('date');
-            
-            if (!password || !passwordHash) {
-                return handleResponse(400, { error: '缺少密码参数' });
-            }
-            
-            const classStore = await getStoreForClass(classId);
-            const storedHash = await classStore.get('password_hash');
-            if (storedHash && passwordHash !== storedHash) {
-                return handleResponse(401, { error: '密码错误' });
-            }
-            
-            try {
-                const data = await homework.loadHomework(classId, password);
-                if (!data) {
-                    return handleResponse(404, { error: '暂无作业数据' });
-                }
-                
-                // 如果没有指定日期,返回全部数据
-                if (!dateParam) {
-                    const exportData = await homework.exportHomework(classId, password);
-                    return handleResponse(200, exportData);
-                }
-                
-                // 指定日期,返回当天的数据
-                const targetDate = new Date(dateParam);
-                const days = Math.floor(targetDate.getTime() / 86400000);
-                const dayOffset = days - data.dateFrom;
-                
-                if (dayOffset < 0) {
-                    return handleResponse(200, {
-                        date: dateParam,
-                        exists: false,
-                        message: '该日期在记录起始日期之前',
-                        data: null
-                    });
-                }
-                
-                const bitsPerDay = data.students * data.subjectNames.length;
-                const bytesPerDay = Math.ceil(bitsPerDay / 8);
-                const maxDays = Math.floor(data.bitData.length / bytesPerDay);
-                
-                if (dayOffset >= maxDays) {
-                    return handleResponse(200, {
-                        date: dateParam,
-                        exists: false,
-                        message: '该日期暂无数据',
-                        data: null
-                    });
-                }
-                
-                const startByte = dayOffset * bytesPerDay;
-                const dayBytes = data.bitData.subarray(startByte, startByte + bytesPerDay);
-                const bits = homework.toBitarray(dayBytes);
-                
-                const dayStudents = [];
-                for (let student = 0; student < data.students; student++) {
-                    const startBit = student * data.subjectNames.length;
-                    const studentBits = bits.slice(startBit, startBit + data.subjectNames.length);
-                    dayStudents.push(studentBits);
-                }
-                
-                return handleResponse(200, {
-                    date: dateParam,
-                    exists: true,
-                    students: data.students,
-                    subjectNames: data.subjectNames,
-                    data: dayStudents
-                });
-                
-            } catch (e) {
-                return handleResponse(500, { error: `加载失败: ${e.message}` });
-            }
-        }
-        
-        // POST /api/class/{id}/homework/update - 更新单个作业提交
-        if (httpMethod === 'POST' && requestPath.includes('/api/class/') && requestPath.includes('/homework/update')) {
-            const classIdMatch = requestPath.match(/class_\d+/);
-            const classId = classIdMatch ? classIdMatch[0] : '';
-            const password = headers['x-password'];
-            const passwordHash = headers['x-password-hash'];
-            const { student_id, date, subject_id } = JSON.parse(body);
-            
-            if (!password || !passwordHash) {
-                return handleResponse(400, { error: '缺少密码参数' });
-            }
-            if (student_id === undefined || !date || subject_id === undefined) {
-                return handleResponse(400, { error: '缺少必要参数: student_id, date, subject_id' });
-            }
-            
-            const classStore = await getStoreForClass(classId);
-            const storedHash = await classStore.get('password_hash');
-            if (storedHash && passwordHash !== storedHash) {
-                return handleResponse(401, { error: '密码错误' });
-            }
-            
-            try {
-                const targetDate = new Date(date);
-                const days = Math.floor(targetDate.getTime() / 86400000);
-                await homework.updateHomework(classId, student_id, days, subject_id, password);
-                return handleResponse(200, { message: '更新成功' });
-            } catch (e) {
-                return handleResponse(500, { error: `更新失败: ${e.message}` });
-            }
-        }
-        
-        // POST /api/class/{id}/homework/day - 添加一整天的数据
-        if (httpMethod === 'POST' && requestPath.includes('/api/class/') && requestPath.includes('/homework/day')) {
-            const classIdMatch = requestPath.match(/class_\d+/);
-            const classId = classIdMatch ? classIdMatch[0] : '';
-            const password = headers['x-password'];
-            const passwordHash = headers['x-password-hash'];
-            const { data: dayData, date } = JSON.parse(body);
-            
-            if (!password || !passwordHash) {
-                return handleResponse(400, { error: '缺少密码参数' });
-            }
-            if (!dayData || !Array.isArray(dayData) || dayData.length === 0) {
-                return handleResponse(400, { error: '无效的dayData格式,需要非空数组' });
-            }
-            if (!Array.isArray(dayData[0])) {
-                return handleResponse(400, { error: 'dayData格式错误,需要二维数组' });
-            }
-            
-            const classStore = await getStoreForClass(classId);
-            const storedHash = await classStore.get('password_hash');
-            if (storedHash && passwordHash !== storedHash) {
-                return handleResponse(401, { error: '密码错误' });
-            }
-            
-            try {
-                const targetDate = date ? new Date(date) : new Date();
-                const days = Math.floor(targetDate.getTime() / 86400000);
-                await homework.addHomeworkDay(classId, dayData, days, password);
-                return handleResponse(200, { message: '添加成功' });
-            } catch (e) {
-                return handleResponse(500, { error: `添加失败: ${e.message}` });
-            }
-        }
-        
         // GET /api/template
         if (httpMethod === 'GET' && requestPath.includes('/api/template')) {
             const template = `# 班级数据收集指令
@@ -483,12 +293,286 @@ exports.handler = async (event) => {
                 body: template
             };
         }
+
+        // ============================================
+        // 作业管理接口
+        // ============================================
         
-        console.log('404 Not Found:', requestPath);
-        return handleResponse(404, { error: 'Not Found', path: requestPath });
+        // POST /api/class/{id}/homework/init
+        // 初始化班级作业系统
+        if (httpMethod === 'POST' && requestPath.includes('/api/class/') && requestPath.includes('/homework/init')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+            
+            const { student_count, subject_count, subject_names, start_date } = JSON.parse(body);
+            
+            if (student_count === undefined || student_count < 1) {
+                return handleResponse(400, { error: '学生数量必须大于0' });
+            }
+            if (subject_count === undefined || subject_count < 1) {
+                return handleResponse(400, { error: '学科数量必须大于0' });
+            }
+            if (!subject_names || typeof subject_names !== 'object') {
+                return handleResponse(400, { error: '请提供学科名称映射,格式: { "0": "语文", "1": "数学" }' });
+            }
+            
+            const password = headers['x-password'];
+            const passwordHash = headers['x-password-hash'];
+            if (!password || !passwordHash) {
+                return handleResponse(401, { error: '需要密码验证' });
+            }
+            
+            const classStore = await getStoreForClass(classId);
+            const storedHash = await classStore.get('password_hash');
+            if (storedHash && passwordHash !== storedHash) {
+                return handleResponse(401, { error: '密码错误' });
+            }
+            
+            try {
+                const result = await initHomeworkSystem(classStore, {
+                    studentCount: student_count,
+                    subjectCount: subject_count,
+                    subjectNames: subject_names,
+                    startDate: start_date || null
+                });
+                return handleResponse(200, result);
+            } catch (error) {
+                return handleResponse(400, { error: error.message });
+            }
+        }
+        
+        // GET /api/class/{id}/homework/meta
+        // 获取作业系统元数据
+        if (httpMethod === 'GET' && requestPath.includes('/api/class/') && requestPath.includes('/homework/meta')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+            
+            const classStore = await getStoreForClass(classId);
+            const meta = await getHomeworkMeta(classStore);
+            
+            if (!meta) {
+                return handleResponse(404, { error: '作业系统未初始化' });
+            }
+            
+            return handleResponse(200, meta);
+        }
+        
+        // GET /api/class/{id}/homework/status
+        // 检查作业系统是否已初始化
+        if (httpMethod === 'GET' && requestPath.includes('/api/class/') && requestPath.includes('/homework/status')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+            
+            const classStore = await getStoreForClass(classId);
+            const initialized = await isHomeworkInitialized(classStore);
+            
+            return handleResponse(200, {
+                initialized,
+                message: initialized ? '作业系统已初始化' : '作业系统未初始化'
+            });
+        }
+        
+        // GET /api/class/{id}/homework
+        // 获取班级所有作业数据
+        if (httpMethod === 'GET' && requestPath.includes('/api/class/') && requestPath.includes('/homework') && 
+            !requestPath.includes('/meta') && !requestPath.includes('/status') && !requestPath.includes('/student') &&
+            !requestPath.includes('/raw')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+            
+            const classStore = await getStoreForClass(classId);
+            const result = await getHomeworkData(classStore);
+            
+            if (!result.exists) {
+                return handleResponse(404, { error: '作业数据不存在' });
+            }
+            
+            const { dateFrom, dateTo, totalDays } = require('./homework').getDateRange(result.data);
+            
+            return handleResponse(200, {
+                data: result.data,
+                dateFrom: dateFrom ? dateFrom.toISOString().split('T')[0] : null,
+                dateTo: dateTo ? dateTo.toISOString().split('T')[0] : null,
+                totalDays
+            });
+        }
+        
+        // GET /api/class/{id}/homework/raw
+        // 获取原始二进制数据
+        if (httpMethod === 'GET' && requestPath.includes('/api/class/') && requestPath.includes('/homework/raw') &&
+            !requestPath.includes('/download')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+            
+            const classStore = await getStoreForClass(classId);
+            const raw = await classStore.get('homework_data');
+            
+            if (!raw) {
+                return handleResponse(404, { error: '作业数据不存在' });
+            }
+            
+            const meta = await getHomeworkMeta(classStore);
+            
+            return handleResponse(200, {
+                data: raw,
+                meta: meta || null,
+                encoding: 'base64',
+                size: Buffer.from(raw, 'base64').length
+            });
+        }
+        
+        // DELETE /api/class/{id}/homework
+        // 删除作业数据
+        if (httpMethod === 'DELETE' && requestPath.includes('/api/class/') && requestPath.includes('/homework')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+            
+            const password = headers['x-password'];
+            const passwordHash = headers['x-password-hash'];
+            if (!password || !passwordHash) {
+                return handleResponse(401, { error: '需要密码验证' });
+            }
+            
+            const classStore = await getStoreForClass(classId);
+            const storedHash = await classStore.get('password_hash');
+            if (storedHash && passwordHash !== storedHash) {
+                return handleResponse(401, { error: '密码错误' });
+            }
+            
+            await classStore.delete('homework_data');
+            await classStore.delete('homework_meta');
+            
+            return handleResponse(200, { message: '作业数据已删除' });
+        }
+        
+        // GET /api/class/{id}/homework/student/{studentId}
+        // 获取指定学生的作业数据
+        if (httpMethod === 'GET' && requestPath.includes('/api/class/') && requestPath.includes('/homework/student/')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+            
+            const studentIdMatch = requestPath.match(/\/student\/(\d+)/);
+            const studentId = studentIdMatch ? parseInt(studentIdMatch[1]) : -1;
+            
+            if (studentId <= 0) {
+                return handleResponse(400, { error: '无效的学生ID' });
+            }
+            
+            const url = new URL(requestPath, 'http://localhost');
+            const targetDate = url.searchParams.get('date');
+            
+            const classStore = await getStoreForClass(classId);
+            
+            if (targetDate) {
+                const data = await getStudentHomework(classStore, studentId, targetDate);
+                if (data === null) {
+                    return handleResponse(404, { error: '未找到数据' });
+                }
+                return handleResponse(200, { date: targetDate, studentId, homework: data });
+            } else {
+                const result = await getHomeworkData(classStore);
+                if (!result.exists) {
+                    return handleResponse(404, { error: '作业数据不存在' });
+                }
+                
+                const studentData = [];
+                const { dateFrom, totalDays } = require('./homework').getDateRange(result.data);
+                
+                for (let day = 0; day < result.data.length; day++) {
+                    if (studentId < result.data[day].length) {
+                        const currentDate = new Date(dateFrom);
+                        currentDate.setDate(currentDate.getDate() + day);
+                        studentData.push({
+                            date: currentDate.toISOString().split('T')[0],
+                            homework: result.data[day][studentId]
+                        });
+                    }
+                }
+                
+                return handleResponse(200, { studentId, data: studentData });
+            }
+        }
+        
+        // POST /api/class/{id}/homework/update
+        // 更新某个学生的作业提交
+        if (httpMethod === 'POST' && requestPath.includes('/api/class/') && requestPath.includes('/homework/update')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+            
+            const { student_id, target_date, subject_id } = JSON.parse(body);
+            
+            if (student_id === undefined || !target_date || subject_id === undefined) {
+                return handleResponse(400, { error: '缺少必要参数: student_id, target_date, subject_id' });
+            }
+            
+            const password = headers['x-password'];
+            const passwordHash = headers['x-password-hash'];
+            if (!password || !passwordHash) {
+                return handleResponse(401, { error: '需要密码验证' });
+            }
+            
+            const classStore = await getStoreForClass(classId);
+            const storedHash = await classStore.get('password_hash');
+            if (storedHash && passwordHash !== storedHash) {
+                return handleResponse(401, { error: '密码错误' });
+            }
+            
+            try {
+                const result = await updateHomework(classStore, student_id, target_date, subject_id);
+                if (result) {
+                    return handleResponse(200, { message: '更新成功', student_id, target_date, subject_id });
+                } else {
+                    return handleResponse(500, { error: '保存失败' });
+                }
+            } catch (error) {
+                return handleResponse(400, { error: error.message });
+            }
+        }
+        
+        // POST /api/class/{id}/homework/day
+        // 添加一整天的作业数据
+        if (httpMethod === 'POST' && requestPath.includes('/api/class/') && requestPath.includes('/homework/day')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+            
+            const { day_data, target_date } = JSON.parse(body);
+            
+            if (!day_data || !Array.isArray(day_data)) {
+                return handleResponse(400, { error: '缺少必要参数: day_data' });
+            }
+            
+            const password = headers['x-password'];
+            const passwordHash = headers['x-password-hash'];
+            if (!password || !passwordHash) {
+                return handleResponse(401, { error: '需要密码验证' });
+            }
+            
+            const classStore = await getStoreForClass(classId);
+            const storedHash = await classStore.get('password_hash');
+            if (storedHash && passwordHash !== storedHash) {
+                return handleResponse(401, { error: '密码错误' });
+            }
+            
+            try {
+                const result = await addDayData(classStore, day_data, target_date);
+                if (result) {
+                    return handleResponse(200, {
+                        message: '添加成功',
+                        target_date: target_date || new Date().toISOString().split('T')[0]
+                    });
+                } else {
+                    return handleResponse(500, { error: '保存失败' });
+                }
+            } catch (error) {
+                return handleResponse(400, { error: error.message });
+            }
+        }
+        
+        console.log('Error: requests invalid');
+        return handleResponse(404, { error: 'Not Found', 'path': requestPath });
         
     } catch (error) {
         console.error('Error:', error);
-        return handleResponse(500, { error: '服务器内部错误: ' + error.message, path: requestPath });
+        return handleResponse(500, { error: '服务器内部错误: ' + error.message, 'path': requestPath });
     }
 };
