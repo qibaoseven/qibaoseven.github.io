@@ -1,5 +1,6 @@
 // ========================================
-// StudentOS v0.43 (build v1)
+// StudentOS v0.44
+// Author: github@qibaoseven, bilibili@七宝-Seven
 // ========================================
 function formatDateWithMs(date = new Date()) {
     const yy = date.getFullYear().toString().slice(2);

@@ -1,5 +1,6 @@
 // ========================================
-// StudentOS v0.43 (build v1)
+// StudentOS v0.44
+// Author: github@qibaoseven, bilibili@七宝-Seven
 // ========================================
 const { createHmac, createHash, randomBytes, createCipheriv, createDecipheriv } = require('crypto');
 const { initBlobs, getStoreForClass, getClassesList, saveClassesList, getTokens, saveTokens } = require('./blobs');

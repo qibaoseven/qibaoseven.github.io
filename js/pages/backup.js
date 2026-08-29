@@ -1,5 +1,6 @@
 // ========================================
-// StudentOS v0.43 (build v1)
+// StudentOS v0.44
+// Author: github@qibaoseven, bilibili@七宝-Seven
 // ========================================
 function showBackup() {
     if (!window.auth.hasPermission('数据备份')) {
