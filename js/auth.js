@@ -175,8 +175,6 @@ function renderSidebar() {
         { id: 'group', icon: '👥', name: '分组管理', permission: '分组管理', page: 'group' },
         { id: 'ranking', icon: '🏆', name: '排名管理', permission: '排名管理', page: 'rank' },
         { id: 'dailyReport', icon: '📋', name: '每日汇报', permission: '每日汇报', page: 'dailyReport' },
-        { id: 'gacha', icon: '🎰', name: '学分抽奖', permission: '学分抽奖', page: 'gacha' },
-        { id: 'punishment', icon: '🎯', name: '惩罚管理', permission: '惩罚管理', page: 'punishment' },
         { id: 'gold', icon: '💰', name: '金币系统', permission: '金币系统', page: 'gold' },
         { id: 'logs', icon: '📋', name: '操作日志', permission: '操作日志', page: 'logs' },
         { id: 'backup', icon: '💾', name: '数据备份', permission: '数据备份', page: 'backup' },
@@ -222,8 +220,6 @@ function renderSidebar() {
                 case 'group': if (window.group) window.group.showGroupManagement(); break;
                 case 'rank': if (window.rank) window.rank.showRanking(); break;
                 case 'dailyReport': if (window.dailyReport) window.dailyReport.showDailyReport(); break;
-                case 'gacha': if (window.gacha) window.gacha.showGacha(); break;
-                case 'punishment': if (window.punishment) window.punishment.showPunishment(); break;
                 case 'gold': if (window.gold) window.gold.showGoldSystem(); break;
                 case 'logs': if (window.logs) window.logs.showLogs(); break;
                 case 'backup': if (window.backup) window.backup.showBackup(); break;
