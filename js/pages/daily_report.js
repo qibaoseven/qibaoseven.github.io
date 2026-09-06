@@ -183,7 +183,7 @@ function showAddMember(itemKey) {
     const opts = DEDUCT_OPTIONS.map(o=>`<option value="${o}">${o} 分</option>`).join('');
     window.modal.show(`添加违纪 · ${item.name}`, `
         <div style="margin:12px 0;">
-            <label>学号(假id):</label>
+            <label>学号:</label>
             <input type="number" id="${idInputId}" placeholder="输入学号编号" min="1"
                 style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;">
             <label style="display:block;margin-top:12px;">扣分选项:</label>
