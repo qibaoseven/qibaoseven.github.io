@@ -1,5 +1,5 @@
 // ========================================
-// StudentOS v0.44
+// StudentOS v0.45 bb1
 // Author: github@qibaoseven, bilibili@七宝-Seven
 // ========================================
 window.appData = {
@@ -135,7 +135,26 @@ async function runAutoEvents() {
     saveAllData();
 }
 
+// v0.45 bb1: 自动补全 —— 仅对 role==='user' 的账号补 group_ids 字段(字典, 值为空 {})
+// 返回是否发生了补齐 (true=有账号被补, 调用者可据此决定是否需要保存)
+function ensureUserGroupIds() {
+    if (!window.appData || !window.appData.users) return false;
+    const users = window.appData.users;
+    let changed = false;
+    Object.values(users).forEach(user => {
+        if (!user || typeof user !== 'object') return;
+        if (user.role !== 'user') return;
+        // group_ids 应为普通对象(dict); 缺失、null 或非对象时补为空 {}
+        if (!user.group_ids || typeof user.group_ids !== 'object' || Array.isArray(user.group_ids)) {
+            user.group_ids = {};
+            changed = true;
+        }
+    });
+    return changed;
+}
+
 window.dataManager = {
     saveData, saveAllData, clearLocalCache,
-    batchImportData, runAutoEvents
+    batchImportData, runAutoEvents,
+    ensureUserGroupIds
 };

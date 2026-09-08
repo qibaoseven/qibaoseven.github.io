@@ -1,5 +1,5 @@
 // ========================================
-// StudentOS v0.44
+// StudentOS v0.45 bb1
 // Author: github@qibaoseven, bilibili@七宝-Seven
 // ========================================
 // ==================== 班级选择页面 ====================
@@ -89,7 +89,14 @@ async function enterClass() {
         
         const result = await response.json();
         window.appData = result.data;
-        
+
+        // v0.45 bb1: 载入后自动补全 role=user 的 group_ids 字典字段(缺失补空 {}), 有改动则保存
+        if (window.dataManager && window.dataManager.ensureUserGroupIds &&
+            window.dataManager.ensureUserGroupIds()) {
+            if (window.saveAllDataToCloud) window.saveAllDataToCloud().catch(e => console.warn('保存失败', e));
+            console.log('v0.45 bb1: 已为 role=user 账号补齐 group_ids 字段');
+        }
+
         window.currentClassId = selectedClassId;
         window.classPassword = password;
         window.classPasswordHash = passwordHash;
