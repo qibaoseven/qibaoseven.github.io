@@ -282,11 +282,33 @@ function showAddMember(itemKey) {
     const item = EVAL_ITEMS.find(i => i.key === itemKey);
     const idInputId = 'disc_add_id';
     const opts = DEDUCT_OPTIONS.map(o=>`<option value="${o}">${o} 分</option>`).join('');
-    window.modal.show(`添加违纪 · ${item.name}`, `
-        <div style="margin:12px 0;">
+
+    // v0.45 bb4: 学号改为下拉选择本小组成员; 无成员名单时回退为手动输入
+    const { list } = resolveGroupMembers(DRAFT.sid);
+    const gname = getStudentName(DRAFT.sid);
+    const recorded = new Set((DRAFT.records[itemKey] || []).map(r => String(r.id)));
+
+    let idField;
+    if (list.length) {
+        idField = `
+            <label>选择本组同学（${escapeHtml(gname)}，共 ${list.length} 人）:</label>
+            <select id="${idInputId}"
+                style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;">
+                ${list.map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.id)} · ${escapeHtml(m.name)}${recorded.has(m.id) ? '（已在本项记录）' : ''}</option>`).join('')}
+            </select>`;
+    } else {
+        idField = `
             <label>学号:</label>
             <input type="number" id="${idInputId}" placeholder="输入学号编号" min="1"
                 style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;">
+            <div style="margin-top:6px;font-size:.85em;color:#8a6d1b;">
+                该小组暂无成员名单，已回退为手动输入学号（可在「账号管理 → 👥 修改小组人员」补全名单）。
+            </div>`;
+    }
+
+    window.modal.show(`添加违纪 · ${item.name}`, `
+        <div style="margin:12px 0;">
+            ${idField}
             <label style="display:block;margin-top:12px;">扣分选项:</label>
             <select id="disc_add_score" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;">${opts}</select>
         </div>
@@ -304,7 +326,7 @@ function confirmAddMember(itemKey) {
     const score = parseInt(scoreEl ? scoreEl.value : '', 10);
 
     if (!idEl || !scoreEl) return;
-    if (isNaN(id) || id <= 0) { alert('请填写有效的学号'); return; }
+    if (isNaN(id) || id <= 0) { alert('请选择本组同学（无成员名单时请填写有效的学号）'); return; }
     if (isNaN(score)) { alert('请选择扣分选项'); return; }
 
     // 加到 DRAFT.records
