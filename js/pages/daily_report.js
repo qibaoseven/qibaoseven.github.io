@@ -8,7 +8,7 @@
 //       "学号"为假 id(仅作数据标记), 与真实学生无直接关系。
 //       加分/扣分都作用到【当前选中的小组】上:
 //          - 该项目无任何违纪成员  -> 不扣
-//          - 参与了违纪的,按 -2/-3/-4 扣到该小组
+//          - 参与了违纪的,按 -2/-3/-4/-16 扣到该小组
 //          若 7 项目全部无人违纪(完全达标)-> 该小组 +1 分
 //       每个小组每天只能登记一次。
 //       v0.45 bb3: 选小组下拉框下方新增「本组成员」小方块, 显示该小组成员名单。
@@ -28,7 +28,7 @@ const EVAL_ITEMS = [
 ];
 
 // 允许的扣分档位
-const DEDUCT_OPTIONS = [-2, -3, -4];
+const DEDUCT_OPTIONS = [-2, -3, -4, -16];
 
 // 运行中暂存: 当前选中小组成员登记(仅内存,提交后写入)
 const DRAFT = {
@@ -56,7 +56,7 @@ function showDailyReport() {
 
             <div class="info-box">
                 <strong>📢 说明:</strong> 选择小组后，在下方七个项目中登记违反的成员。
-                填写的「学号」仅作为记录标记；查到违纪则对<span style="color:#ff4e4e;">当前小组</span>扣 <b>-2 / -3 / -4</b> 分。
+                填写的「学号」仅作为记录标记；查到违纪则对<span style="color:#ff4e4e;">当前小组</span>扣 <b>-2 / -3 / -4 / -16</b> 分。
                 若七项全部无人违纪（完全达标），该小组当日 <b>+1</b> 分。每个小组每天只能登记一次。
             </div>
 
@@ -281,7 +281,7 @@ function renderItems(sid, rec) {
 function showAddMember(itemKey) {
     const item = EVAL_ITEMS.find(i => i.key === itemKey);
     const idInputId = 'disc_add_id';
-    const opts = DEDUCT_OPTIONS.map(o=>`<option value="${o}">${o} 分</option>`).join('');
+    const opts = DEDUCT_OPTIONS.map(o=>`<option value="${o}">${o} 分${o === -16 ? ' 💥' : ''}</option>`).join('');
 
     // v0.45 bb4: 学号改为下拉选择本小组成员; 无成员名单时回退为手动输入
     const { list } = resolveGroupMembers(DRAFT.sid);
