@@ -11,6 +11,8 @@
 //          - 参与了违纪的,按 -2/-3/-4 扣到该小组
 //          若 7 项目全部无人违纪(完全达标)-> 该小组 +1 分
 //       每个小组每天只能登记一次。
+//       v0.45 bb3: 选小组下拉框下方新增「本组成员」小方块, 显示该小组成员名单。
+//       成员来源优先取与所选学号对应账号的 group_ids 字典, 回退到班级级 appData.groups。
 // 数据存储:appData.dailyDiscipline[today][groupId]
 //         含 total_deduct, bonus, time, items{reasonKey:[{id,reason,score}...]}
 
@@ -68,6 +70,9 @@ function showDailyReport() {
                 <span id="discStatus" style="font-size:.9em;padding:4px 10px;border-radius:12px;"></span>
                 <span style="margin-left:auto;font-size:.95em;">当前小组分数: <b id="discGroupScore">-</b></span>
             </div>
+
+            <!-- 该小组成员名单 -->
+            <div id="discGroupMembers" style="margin:0 0 14px;"></div>
 
             <!-- 七个项目区块 -->
             <div style="display:flex;flex-direction:column;gap:12px;" id="discItems"></div>
@@ -137,7 +142,103 @@ function initGroup(sid) {
     }
 
     renderItems(sid, rec);
+    renderGroupMembers(sid);
     updateSummary();
+}
+
+// ==================== 该小组成员名单 ====================
+// 数据来源优先级:
+//   1) 与所选学号对应的账号(appData.users[*].student_id === sid, 或键名恰为 sid)的 group_ids 字典
+//   2) 回退到班级级分组 appData.groups(组名命中 sid 或该学号对应学生姓名)
+//   3) 都没有 -> 提示未维护
+function resolveGroupMembers(sid) {
+    const users = window.appData.users || {};
+    const sidStr = String(sid);
+
+    // 把账号的 group_ids 读成 [{id,name}]；不是合法字典则返回 null
+    const readDict = (u) => {
+        const d = u && u.group_ids;
+        if (!d || typeof d !== 'object' || Array.isArray(d)) return null;
+        return Object.entries(d)
+            .map(([id, name]) => ({ id: String(id), name: String(name) }))
+            .sort((a, b) => (parseInt(a.id, 10) || 0) - (parseInt(b.id, 10) || 0));
+    };
+
+    // 1) 收集候选账号: 用户名恰为学号, 或 student_id 与学号相同
+    const candidates = [];
+    if (users[sidStr] && typeof users[sidStr] === 'object') candidates.push({ uname: sidStr, user: users[sidStr] });
+    Object.entries(users).forEach(([uname, u]) => {
+        if (!u || typeof u !== 'object') return;
+        if (uname === sidStr) return;                                  // 已作为用户名候选加入
+        if (String(u.student_id) !== sidStr) return;
+        candidates.push({ uname, user: u });
+    });
+
+    // 2) 多个账号撞同一学号时, 优先取成员名单非空的那个; 全为空则给「名单为空」提示
+    let hit = null, emptyHit = null;
+    for (const c of candidates) {
+        const list = readDict(c.user);
+        if (list && list.length) { hit = { c, list }; break; }
+        if (list && !emptyHit) emptyHit = { c, list };
+    }
+    const owner = hit ? hit.c : (emptyHit ? emptyHit.c : null);
+
+    if (owner) {
+        return {
+            list: hit ? hit.list : [],
+            source: `账号「${owner.user.display_name || owner.uname}」的 group_ids`,
+            kind: 'group_ids'
+        };
+    }
+
+    // 2) 回退到班级分组
+    const groups = window.appData.groups || {};
+    const myName = getStudentName(sid);
+    let gname = null;
+    if (Array.isArray(groups[sid])) gname = sid;
+    else if (myName && Array.isArray(groups[myName])) gname = myName;
+    if (gname) {
+        const list = (groups[gname] || [])
+            .filter(id => id !== '0')
+            .map(id => ({ id: String(id), name: getStudentName(id) }));
+        return { list, source: `分组「${gname}」`, kind: 'groups' };
+    }
+
+    return { list: [], source: null, kind: 'none' };
+}
+
+function renderGroupMembers(sid) {
+    const el = document.getElementById('discGroupMembers');
+    if (!el) return;
+
+    const { list, source, kind } = resolveGroupMembers(sid);
+    const gname = getStudentName(sid);
+
+    const chips = list.map(m => `
+        <span style="display:inline-flex;align-items:center;gap:5px;background:#fff0e6;color:#ff6b4a;
+            border-radius:14px;padding:3px 10px;margin:2px;font-size:.85em;white-space:nowrap;">
+            <b style="color:#ff8f4e;">${escapeHtml(m.id)}</b> ${escapeHtml(m.name)}
+        </span>`).join('');
+
+    let body;
+    if (list.length) {
+        body = `<div style="display:flex;flex-wrap:wrap;align-items:center;min-height:28px;">${chips}</div>`;
+    } else if (kind === 'group_ids') {
+        body = `<div style="color:#8a6d1b;font-size:.9em;">该账号的成员名单为空，可在「账号管理 → 👥 修改小组人员」中添加。</div>`;
+    } else {
+        body = `<div style="color:#8a6d1b;font-size:.9em;">暂无该小组成员信息（未找到对应账号的成员名单，也没有同名分组）。</div>`;
+    }
+
+    el.innerHTML = `
+        <div style="background:#fff6f0;border:1px solid #f0e0cc;border-left:3px solid #ff9f4e;border-radius:8px;padding:10px 12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+                <span style="font-size:.92em;color:#8a6d1b;">
+                    👥 <b>本组成员</b>（${escapeHtml(gname)}）共 <b>${list.length}</b> 人
+                </span>
+                ${source ? `<span style="font-size:.8em;color:#b09a86;">来源: ${escapeHtml(source)}</span>` : ''}
+            </div>
+            ${body}
+        </div>`;
 }
 
 // 渲染七个项目区
@@ -399,6 +500,8 @@ function getStudentName(sid) {
 window.dailyReport = {
     showDailyReport,
     onSelectSid,
+    resolveGroupMembers,
+    renderGroupMembers,
     showAddMember,
     confirmAddMember,
     removeMember,
