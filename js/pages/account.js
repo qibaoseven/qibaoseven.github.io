@@ -1,5 +1,5 @@
 // ========================================
-// StudentOS v0.44
+// StudentOS v0.45 bb2
 // Author: github@qibaoseven, bilibili@七宝-Seven
 // ========================================
 // ==================== 账号管理页面 ====================
@@ -23,6 +23,7 @@ function showAccountManagement() {
             </table>
             
             <div class="btn-grid" style="margin-top: 30px; max-width: 500px; margin-left: auto; margin-right: auto;">
+                ${window.currentUser.role === 'user' ? '<button class="btn btn-primary" onclick="window.account.showManageGroupMembers()">👥 修改小组人员</button>' : ''}
                 <button class="btn btn-primary" onclick="window.account.showChangePassword()">🔑 修改密码</button>
                 <button class="btn btn-primary" onclick="window.account.showChangeDisplayName()">📝 修改显示名称</button>
                 <button class="btn btn-primary" onclick="window.account.showAvatarSelector()">🖼️ 修改头像</button>
@@ -165,6 +166,97 @@ function showAvatarSelector() {
     ]);
 }
 
+// v0.45 bb2: 修改小组人员 —— 仅 role=user 账号编辑自己的 group_ids 字典 {学号(int): 姓名(str)}
+function showManageGroupMembers() {
+    if (window.currentUser.role !== 'user') return;
+    const user = window.appData.users[window.currentUser.username];
+    const dict = (user && user.group_ids && typeof user.group_ids === 'object' && !Array.isArray(user.group_ids))
+                ? user.group_ids : {};
+
+    // 现有条目(带序号行), 另加一行空的以便新填
+    const rows = Object.entries(dict).map(([id, name]) =>
+        `<div class="gb-member-row" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <input type="number" min="1" step="1" class="gb-id" placeholder="学号/ID"
+                style="flex:0 0 110px;padding:8px;border:1px solid #ffd1b8;border-radius:6px;"
+                value="${id}">
+            <input type="text" class="gb-name" placeholder="姓名"
+                style="flex:1;padding:8px;border:1px solid #ffd1b8;border-radius:6px;"
+                value="${String(name).replace(/"/g, '&quot;')}">
+            <button class="btn btn-sm" onclick="this.closest('.gb-member-row').remove()" title="删除此条"
+                style="flex:0 0 42px;padding:5px 0;">✕</button>
+        </div>`).join('') +
+        `<div class="gb-member-row" style="display:flex;align-items:center;gap:8px;">
+            <input type="number" min="1" step="1" class="gb-id" placeholder="学号/ID"
+                style="flex:0 0 110px;padding:8px;border:1px solid #ffd1b8;border-radius:6px;">
+            <input type="text" class="gb-name" placeholder="姓名"
+                style="flex:1;padding:8px;border:1px solid #ffd1b8;border-radius:6px;">
+            <button class="btn btn-sm" onclick="this.closest('.gb-member-row').remove()" title="删除此条"
+                style="flex:0 0 42px;padding:5px 0;">✕</button>
+        </div>`;
+
+    window.modal.show(`👥 修改小组人员 ${window.currentUser.display_name || window.currentUser.username}`, `
+        <div style="margin: 16px 0;">
+            <div style="color:#ff6b4a;font-size:.9em;margin-bottom:10px;">左边填学号(ID, 整数)，右边填姓名，改动后点「保存」自动提交。</div>
+            <div id="gbRows">${rows}</div>
+            <div style="text-align:center;margin-top:10px;">
+                <button class="btn btn-primary" onclick="window.account.addMemberRow()">＋ 添加一行</button>
+            </div>
+        </div>
+    `, [
+        { text: '取消', onclick: 'window.modal.close()' },
+        { text: '保存并提交', onclick: 'window.account.saveManageGroupMembers()', className: 'btn-primary' }
+    ]);
+}
+
+// 追加一行输入
+function addMemberRow() {
+    const cont = document.getElementById('gbRows');
+    if (!cont) return;
+    const row = document.createElement('div');
+    row.className = 'gb-member-row';
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+    row.innerHTML = `
+        <input type="number" min="1" step="1" class="gb-id" placeholder="学号/ID"
+            style="flex:0 0 110px;padding:8px;border:1px solid #ffd1b8;border-radius:6px;">
+        <input type="text" class="gb-name" placeholder="姓名"
+            style="flex:1;padding:8px;border:1px solid #ffd1b8;border-radius:6px;">
+        <button class="btn btn-sm" onclick="this.closest('.gb-member-row').remove()"
+            style="flex:0 0 42px;padding:5px 0;">✕</button>`;
+    cont.appendChild(row);
+    row.querySelector('.gb-id').focus();
+}
+
+// 保存: 收集所有行 -> group_ids 字典 {学号(id,整数数字字符串): 姓名}, 写回并提交
+function saveManageGroupMembers() {
+    if (window.currentUser.role !== 'user') { alert('无权限'); return; }
+    const rows = Array.from(document.querySelectorAll('#gbRows .gb-member-row'));
+    const result = {};
+    let badCount = 0, kept = 0;
+
+    rows.forEach(row => {
+        const idInput = row.querySelector('.gb-id');
+        const nameInput = row.querySelector('.gb-name');
+        const idRaw = idInput ? idInput.value.trim() : '';
+        const name = nameInput ? nameInput.value.trim() : '';
+        if (idRaw === '' && name === '') return;               // 完全空行忽略
+        const id = parseInt(idRaw, 10);
+        if (isNaN(id) || id <= 0) { badCount++; return; }       // ID 非法
+        if (name === '') { badCount++; return; }                // 名字为空
+        if (result[id] === undefined) { result[id] = name; kept++; }
+    });
+
+    if (badCount > 0) {
+        const ok = confirm(`有 ${badCount} 行填写不完整(缺学号/姓名或学号非法)，将跳过这些行。\n可保留的 ${kept} 条会正常保存。\n\n仍然继续吗？`);
+        if (!ok) return;
+    }
+
+    const user = window.appData.users[window.currentUser.username];
+    user.group_ids = result;
+    window.dataManager.saveData('users');
+    window.modal.close();
+    window.modal.notify(`小组人员已更新，共 ${kept} 人`, 'success');
+}
+
 // 导出到全局
 window.account = {
     showAccountManagement,
@@ -172,5 +264,8 @@ window.account = {
     handleChangePassword,
     showChangeDisplayName,
     handleChangeDisplayName,
-    showAvatarSelector
+    showAvatarSelector,
+    showManageGroupMembers,
+    addMemberRow,
+    saveManageGroupMembers
 };
