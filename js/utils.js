@@ -159,7 +159,7 @@ async function readJSONFile(file) {
     });
 }
 
-const FILE_TO_DATA_KEY = { 'user': 'users', 'score': 'scores', 'gold_data': 'gold', 'rewards': 'rewards', 'punishment': 'punishments', 'usr_pun': 'userPunishments', 'log': 'logs', 'score_rules': 'rules', 'exchange_rate': 'exchangeRate', 'emoji': 'emoji', 'daily_report': 'dailyReport', 'daily_check': 'dailyCheck', 'auto_events': 'autoEvents' };
+const FILE_TO_DATA_KEY = { 'user': 'users', 'score': 'scores', 'gold_data': 'gold', 'rewards': 'rewards', 'punishment': 'punishments', 'usr_pun': 'userPunishments', 'log': 'logs', 'score_rules': 'rules', 'exchange_rate': 'exchangeRate', 'emoji': 'emoji', 'daily_report': 'dailyReport', 'daily_check': 'dailyCheck' };
 
 function getAllStudents() {
     const students = [];

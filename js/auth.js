@@ -12,7 +12,7 @@ function hasPermission(permission) {
     const permissions = {
         user: ['我的分数', '排名管理', '学分抽奖', '惩罚管理', '金币系统', '职位系统'],
         admin: ['分数管理', '分组管理', '排名管理', '数据备份', '学分抽奖', '惩罚管理', '金币系统', '我的分数', '每日汇报', '操作日志', '职位系统'],
-        root: ['分数管理', '分组管理', '排名管理', '操作日志', '数据备份', '学分抽奖', '惩罚管理', '金币系统', '我的分数', '每日汇报', '职位系统', '自动事件']
+        root: ['分数管理', '分组管理', '排名管理', '操作日志', '数据备份', '学分抽奖', '惩罚管理', '金币系统', '我的分数', '每日汇报', '职位系统']
     };
     
     return permissions[role]?.includes(permission) || false;
@@ -26,13 +26,10 @@ function getPagePermissionString(pageName) {
         'group': '---rwxrwx',
         'rank': 'r--r--r--',
         'dailyReport': 'r--rwxr--',
-        'gacha': 'rwxrwxrwx',
-        'punishment': 'rwxrwxrwx',
         'gold': 'rwxrwxrwx',
         'logs': '------rwx',
         'backup': '------rwx',
         'account': 'rwxrwxrwx',
-        'autoEvents': 'r--r--rwx',
         'positions': 'rw-rw-rwx'
     };
     return permissionMap[pageName] || 'rwxrwxrwx';
@@ -176,7 +173,6 @@ function renderSidebar() {
         { id: 'gold', icon: '💰', name: '金币系统', permission: '金币系统', page: 'gold' },
         { id: 'logs', icon: '📋', name: '操作日志', permission: '操作日志', page: 'logs' },
         { id: 'backup', icon: '💾', name: '数据备份', permission: '数据备份', page: 'backup' },
-        { id: 'autoEvents', icon: '⚡', name: '自动事件', permission: null, page: 'autoEvents' },
         { id: 'account', icon: '👤', name: '账号管理', permission: null, page: 'account' },
         { id: 'positions', icon: '👔', name: '职位系统', permission: null, page: 'positions' },
         { id: 'logout', icon: '🚪', name: '退出系统', permission: null, page: 'logout' }
@@ -219,7 +215,6 @@ function renderSidebar() {
                 case 'gold': if (window.gold) window.gold.showGoldSystem(); break;
                 case 'logs': if (window.logs) window.logs.showLogs(); break;
                 case 'backup': if (window.backup) window.backup.showBackup(); break;
-                case 'autoEvents': if (window.autoEvents) window.autoEvents.showAutoEvents(); break;
                 case 'account': if (window.account) window.account.showAccountManagement(); break;
                 case 'positions': if (window.positions) window.positions.showPositions(); break;
             }

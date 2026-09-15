@@ -216,7 +216,6 @@
     "emojis": "😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘"
   },
   "dailyReport": {},
-  "autoEvents": [],
   "positions": {
     "list": {
       "班长": {
@@ -368,10 +367,9 @@
 
 10. 其他设置
 
-问题：是否需要默认表情包？是否需要设置自动事件？
+问题：是否需要默认表情包？
 
 · emoji.emojis：默认提供常用表情字符串即可
-· autoEvents：默认设为空数组 []
 · dailyReport：默认设为空对象 {}
 · userPunishments：默认设为 { "active": {}, "completed": {} }
 · logs：默认设为空数组 []

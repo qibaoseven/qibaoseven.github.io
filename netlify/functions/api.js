@@ -265,7 +265,6 @@ exports.handler = async (event) => {
   "exchangeRate": {"score_to_gold":0.1,"gold_to_score":10,"last_updated":null},
   "emoji": {"emojis":"😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘"},
   "dailyReport": {},
-  "autoEvents": [],
   "positions": {"list":{},"defaultSalary":5,"lastPayDate":null}
 }
 \`\`\`
@@ -281,7 +280,7 @@ exports.handler = async (event) => {
 7. **金币数据 (gold)** — 每位学生初始金币
 8. **汇率设置 (exchangeRate)** — 学分和金币兑换比率
 9. **职位系统 (positions)** — 班干部职位、工资及任职人员
-10. **其他设置** — emoji、autoEvents、dailyReport 等
+10. **其他设置** — emoji、dailyReport 等
 
 请逐项向用户提问,收集完毕后生成完整 JSON。`;
             return {

@@ -24,17 +24,16 @@
 | 👤 **账号与登录** | 多角色（`user` / `admin` / `root`），密码 SHA-256 哈希存储，支持旧密码自动迁移 |
 | 📊 **分数管理** | 单个 / 批量加减分、按原因加分、设置分数、学生列表，可自定义积分规则 |
 | 📊 **我的分数** | 学生本人查看自己的学分、金币、排名 |
-| 👥 **分组管理** | 分组、组长设置、组内成员管理 |
+| 👥 **分组管理** | 分组、组长设置、组内成员管理（⚠️ 806 分支已移除前端页面） |
 | 🏆 **排名管理** | 学分排行、金币排行、综合排名 |
 | 📋 **每日汇报** | 每日汇报提交与状态跟踪 |
-| 🎰 **学分抽奖** | 按稀有度（SSR/SR/R/N，含隐藏奖励）抽奖，限周五下午 |
-| 🎯 **惩罚管理** | 抽取惩罚任务（SP/SSR/SR/R/N 稀有度），含任务期限与加分奖励 |
+| 🎰 **学分抽奖** | 按稀有度（SSR/SR/R/N，含隐藏奖励）抽奖，限周五下午（⚠️ 806 分支已移除前端页面） |
+| 🎯 **惩罚管理** | 抽取惩罚任务（SP/SSR/SR/R/N 稀有度），含任务期限与加分奖励（⚠️ 806 分支已移除前端页面） |
 | 💰 **金币系统** | 学分 ↔ 金币兑换，可配置汇率 |
 | 👔 **职位系统** | 班干部职位、月薪发放、任职人员 |
-| ⚡ **自动事件** | 每日 / 每周 / 每月 定时自动加减分 |
 | 📋 **操作日志** | 全量操作记录，含搜索 |
 | 💾 **数据备份** | 导出 / 导入 / JsonBin 备份 |
-| 📚 **作业提交** | 布置作业、提交登记、提交率图表、近 30 天积极度排行榜 |
+| 📚 **作业提交** | 布置作业、提交登记、提交率图表、近 30 天积极度排行榜（⚠️ 806 分支已移除前端页面，后端 API 保留） |
 
 ---
 
@@ -102,7 +101,6 @@ cd qibaoseven.github.io
   "exchangeRate": {...},       // 学分/金币汇率
   "emoji": {...},              // 可用表情
   "dailyReport": {},           // 每日汇报
-  "autoEvents": [],            // 自动事件
   "positions": {"list":{}, "defaultSalary":5, "lastPayDate":null}  // 职位
 }
 ```
@@ -110,7 +108,7 @@ cd qibaoseven.github.io
 ### 角色与权限
 | 角色 | 说明 | 特性权限 |
 |------|------|---------|
-| `root` | 超级管理员 | 全部，含自动事件 |
+| `root` | 超级管理员 | 全部 |
 | `admin` | 管理员 | 分数/分组/日志/备份等管理 |
 | `user` | 普通学生 | 我的分数、排名、抽奖、惩罚、金币、职位 |
 
@@ -143,15 +141,15 @@ cd qibaoseven.github.io
 ├── tokens.json             # 创建班级的一次性令牌
 ├── js/
 │   ├── main.js             # 入口 / 云保存
-│   ├── data.js             # 数据模型 / 自动事件引擎
+│   ├── data.js             # 数据模型 / 保存与导入
 │   ├── auth.js             # 登录 / 角色权限 / 侧边栏
 │   ├── utils.js            # 工具库（哈希、分数、金币、抽奖、日志）
 │   ├── components/modal.js # 模态框组件
 │   └── pages/              # 各功能页面
-│       ├── dashboard.js / my_score.js / score.js / group.js / rank.js
-│       ├── daily_report.js / gacha.js / punishment.js / gold.js / logs.js
-│       ├── backup.js / account.js / auto_events.js / positions.js
-│       ├── class_select.js / homework.js
+│       ├── dashboard.js / my_score.js / score.js / rank.js
+│       ├── daily_report.js / gold.js / logs.js
+│       ├── backup.js / account.js / positions.js
+│       └── class_select.js
 ├── netlify/
 │   └── functions/          # 服务端
 │       ├── api.js          # 主 API（班级 + 作业）
@@ -174,6 +172,7 @@ cd qibaoseven.github.io
 | 版本 | 说明 |
 |------|------|
 | v0.44 | 新增作业提交子系统（前后端），作业数据加密，全量版头更新 |
+| 806 分支 | 移除 抽奖 / 惩罚 / 分组 / 作业 前端与自动事件模块；每日汇报改为「违纪扣分登记」（`dailyDiscipline`） |
 | v0.43 | 稳定版，登录/密码体系，多角色权限 |
 | v0.42 | 引入 Netlify Functions API 与 Blobs 云存储 |
 

@@ -196,7 +196,7 @@ function showCreateModal() {
             </div>
             
             <label>班级数据 JSON：</label>
-            <textarea id="createJsonData" class="large-textarea" placeholder='{"users":{},"scores":{},"groups":{},"rules":{},"logs":[],"rewards":{},"punishments":{},"userPunishments":{"active":{},"completed":{}},"gold":{},"exchangeRate":{"score_to_gold":0.1,"gold_to_score":1,"last_updated":null},"emoji":"","dailyReport":{},"autoEvents":[],"positions":{"list":{},"defaultSalary":5,"lastPayDate":null}}'></textarea>
+            <textarea id="createJsonData" class="large-textarea" placeholder='{"users":{},"scores":{},"groups":{},"rules":{},"logs":[],"rewards":{},"punishments":{},"userPunishments":{"active":{},"completed":{}},"gold":{},"exchangeRate":{"score_to_gold":0.1,"gold_to_score":1,"last_updated":null},"emoji":"","dailyReport":{},"positions":{"list":{},"defaultSalary":5,"lastPayDate":null}}'></textarea>
         </div>
     `, [
         { text: '取消', onclick: 'window.modal.close()' },

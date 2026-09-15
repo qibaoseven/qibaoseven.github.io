@@ -47,7 +47,6 @@ function exportData() {
             exchangeRate: window.appData.exchangeRate,
             emoji: window.appData.emoji,
             dailyReport: window.appData.dailyReport,
-            autoEvents: window.appData.autoEvents,
             positions: window.appData.positions,
             METADATA: {
                 exportTime: new Date().toISOString(),
