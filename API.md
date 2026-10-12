@@ -143,6 +143,55 @@ curl -H "X-Password: 706" -H "X-Password-Hash: <hash>" \
 服务端将数据用 AES-256-GCM 加密后写入。返回 `{ message: "保存成功" }`。
 
 ### 2.6 获取数据收集指令模板
+
+### 2.7 获取班级学生名册（学号 → 姓名）
+`GET /api/class/{id}/students`
+
+只需**班级 ID + 密码 + 密码哈希**，返回该班所有学生的姓名字典。
+
+| 头 | 说明 |
+|----|------|
+| `X-Password` | 班级明文密码 |
+| `X-Password-Hash` | `sha256(密码)`，与密码必须匹配 |
+
+| 查询参数 | 说明 |
+|---------|------|
+| `teachers=1` | 可选。把 `admin` / `root` 的学号也一并返回 |
+
+```bash
+DOMAIN=<你的域名>
+CID=class_1780399937423
+PASS=706
+HASH=$(printf '%s' "$PASS" | sha256sum | cut -d' ' -f1)
+
+curl -H "X-Password: $PASS" -H "X-Password-Hash: $HASH" \
+  "$DOMAIN/api/class/$CID/students"
+```
+```json
+{
+  "class_id": "class_1780399937423",
+  "count": 3,
+  "students": {
+    "1": "方梦圆",
+    "2": "姚伽悦",
+    "3": "方瑾涵"
+  }
+}
+```
+
+**过滤规则**
+- 0 号机器人（索引哨兵）始终排除
+- `role` 为 `admin` / `root` 的学号默认排除（如 999 / 9999），它们不是学生
+- 姓名为空或脏数据的行会被跳过
+- 兼容两种 `scores` 形态：`{"1":["方梦圆",100]}` 与 `{"1":{"name":"方梦圆","score":100}}`
+
+**错误**
+
+| 状态 | 场景 |
+|------|------|
+| 400 | 缺 `X-Password` / `X-Password-Hash` |
+| 401 | 密码哈希不匹配 |
+| 404 | 班级不存在 |
 `GET /api/template`
 
 返回一份 Markdown 指令文档（`.md`），用于指导 AI 收集班级初始数据。无鉴权。

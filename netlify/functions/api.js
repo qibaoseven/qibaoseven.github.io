@@ -80,6 +80,47 @@ async function verifyToken(token) {
     return !tokens.used.includes(token);
 }
 
+/**
+ * 从整班数据里抽出「学号 -> 姓名」字典。
+ * 数据兼容两种 scores 形态：
+ *   { "1": ["方梦圆", 100], ... }          数组式
+ *   { "1": { name: "方梦圆", score: 100 } } 对象式
+ * 0 号机器人会被跳过（它不是学生）。
+ * @param {Object} data 解密后的整班数据
+ * @param {Object} [opts]
+ * @param {boolean} [opts.includeTeachers=false] 是否把 admin/root 的学号也算进来
+ * @returns {Object} { 学号: 姓名 }
+ */
+function extractStudents(data, opts = {}) {
+    const students = {};
+    const scores = (data && data.scores) || {};
+    
+    Object.keys(scores).forEach(id => {
+        if (String(id) === '0') return;            // 0 号机器人
+        const row = scores[id];
+        let name = '';
+        if (Array.isArray(row)) {
+            name = row[0];
+        } else if (row && typeof row === 'object') {
+            name = row.name;
+        }
+        if (name === undefined || name === null || String(name).trim() === '') return;
+        students[String(id)] = String(name);
+    });
+    
+    if (!opts.includeTeachers) {
+        // 兜底剔除管理员 / Root 的学号（如 999 / 9999），它们不是学生
+        const users = (data && data.users) || {};
+        Object.values(users).forEach(u => {
+            if (!u || u.role === 'user') return;
+            if (u.student_id === undefined || u.student_id === null) return;
+            delete students[String(u.student_id)];
+        });
+    }
+    
+    return students;
+}
+
 exports.handler = async (event) => {
     initBlobs(event);
     
@@ -184,10 +225,66 @@ exports.handler = async (event) => {
             return handleResponse(201, { id: classId, name: class_name, message: '创建成功' });
         }
         
+        // GET /api/class/{id}/students
+        // 只需班级 + 密码 + 哈希，返回该班「学号 -> 姓名」字典
+        if (httpMethod === 'GET' && requestPath.includes('/api/class/') && requestPath.includes('/students')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+            const password = headers['x-password'];
+            const passwordHash = headers['x-password-hash'];
+            
+            if (!classId) {
+                return handleResponse(400, { error: '缺少班级 ID' });
+            }
+            if (!password) {
+                return handleResponse(400, { error: '缺少密码参数' });
+            }
+            if (!passwordHash) {
+                return handleResponse(400, { error: '缺少密码哈希参数' });
+            }
+            
+            const classStore = await getStoreForClass(classId);
+            const encrypted = await classStore.get('data');
+            const storedHash = await classStore.get('password_hash');
+            
+            if (!encrypted) {
+                return handleResponse(404, { error: '班级不存在' });
+            }
+            // storedHash 存在时必须匹配；不存在（历史班级）则由 data 解密兜底
+            if (storedHash && passwordHash !== storedHash) {
+                return handleResponse(401, { error: '密码错误' });
+            }
+            
+            let data;
+            try {
+                data = decryptData(encrypted, password);
+            } catch (e) {
+                if (e.message.includes('Unsupported state') || e.message.includes('bad') || e.message === '数据格式错误') {
+                    return handleResponse(401, { error: '密码错误' });
+                }
+                return handleResponse(500, { error: `解密失败: ${e.message}` });
+            }
+            
+            // ?teachers=1 可把管理员/Root 的学号也带上
+            const url = new URL(requestPath, 'http://localhost');
+            const includeTeachers = ['1', 'true', 'yes'].includes(
+                (url.searchParams.get('teachers') || '').toLowerCase()
+            );
+            
+            const students = extractStudents(data, { includeTeachers });
+            
+            return handleResponse(200, {
+                class_id: classId,
+                count: Object.keys(students).length,
+                students
+            });
+        }
+        
         // GET /api/class/{id}
-        // 读取整班数据（homework / journal 有独立端点，必须排除在外）
+        // 读取整班数据（homework / journal / students 有独立端点，必须排除在外）
         if (httpMethod === 'GET' && requestPath.includes('/api/class/') &&
-            !requestPath.includes('/homework') && !requestPath.includes('/journal')) {
+            !requestPath.includes('/homework') && !requestPath.includes('/journal') &&
+            !requestPath.includes('/students')) {
             const classIdMatch = requestPath.match(/class_\d+/);
             const classId = classIdMatch ? classIdMatch[0] : '';
             const password = headers['x-password'];
@@ -208,6 +305,7 @@ exports.handler = async (event) => {
                 return handleResponse(404, { error: '班级不存在' });
             }
             
+            // storedHash 存在时必须匹配；不存在（历史班级）则由 data 解密兜底
             if (storedHash && passwordHash !== storedHash) {
                 return handleResponse(401, { error: '密码错误' });
             }
@@ -224,9 +322,10 @@ exports.handler = async (event) => {
         }
         
         // POST /api/class/{id}
-        // 保存整班数据（homework / journal 有独立端点，必须排除在外）
+        // 保存整班数据（homework / journal / students 有独立端点，必须排除在外）
         if (httpMethod === 'POST' && requestPath.includes('/api/class/') &&
-            !requestPath.includes('/homework') && !requestPath.includes('/journal')) {
+            !requestPath.includes('/homework') && !requestPath.includes('/journal') &&
+            !requestPath.includes('/students')) {
             const classIdMatch = requestPath.match(/class_\d+/);
             const classId = classIdMatch ? classIdMatch[0] : '';
             const password = headers['x-password'];
@@ -242,12 +341,19 @@ exports.handler = async (event) => {
             
             const classStore = await getStoreForClass(classId);
             const storedHash = await classStore.get('password_hash');
+            // storedHash 存在时必须匹配；不存在（历史班级）则由 data 解密兜底
             if (storedHash && passwordHash !== storedHash) {
                 return handleResponse(401, { error: '密码错误' });
             }
             
             const encrypted = encryptData(data, password);
             await classStore.set('data', encrypted);
+            
+            // 首次保存时补记密码哈希，让后续请求的哈希校验真正生效。
+            // 只在校验已通过、且原本缺失时补写，绝不覆盖已有哈希。
+            if (!storedHash) {
+                await classStore.set('password_hash', passwordHash);
+            }
             
             return handleResponse(200, { message: '保存成功' });
         }
@@ -336,6 +442,7 @@ exports.handler = async (event) => {
             
             const classStore = await getStoreForClass(classId);
             const storedHash = await classStore.get('password_hash');
+            // storedHash 存在时必须匹配；不存在（历史班级）则由 data 解密兜底
             if (storedHash && passwordHash !== storedHash) {
                 return handleResponse(401, { error: '密码错误' });
             }
@@ -399,6 +506,7 @@ exports.handler = async (event) => {
             }
             const classStore = await getStoreForClass(classId);
             const storedHash = await classStore.get('password_hash');
+            // storedHash 存在时必须匹配；不存在（历史班级）则由 data 解密兜底
             if (storedHash && passwordHash !== storedHash) {
                 return handleResponse(401, { error: '密码错误' });
             }
@@ -465,6 +573,7 @@ exports.handler = async (event) => {
             
             const classStore = await getStoreForClass(classId);
             const storedHash = await classStore.get('password_hash');
+            // storedHash 存在时必须匹配；不存在（历史班级）则由 data 解密兜底
             if (storedHash && passwordHash !== storedHash) {
                 return handleResponse(401, { error: '密码错误' });
             }
@@ -498,6 +607,7 @@ exports.handler = async (event) => {
             }
             const classStore = await getStoreForClass(classId);
             const storedHash = await classStore.get('password_hash');
+            // storedHash 存在时必须匹配；不存在（历史班级）则由 data 解密兜底
             if (storedHash && passwordHash !== storedHash) {
                 return handleResponse(401, { error: '密码错误' });
             }
@@ -559,6 +669,7 @@ exports.handler = async (event) => {
             
             const classStore = await getStoreForClass(classId);
             const storedHash = await classStore.get('password_hash');
+            // storedHash 存在时必须匹配；不存在（历史班级）则由 data 解密兜底
             if (storedHash && passwordHash !== storedHash) {
                 return handleResponse(401, { error: '密码错误' });
             }
@@ -598,6 +709,7 @@ exports.handler = async (event) => {
             
             const classStore = await getStoreForClass(classId);
             const storedHash = await classStore.get('password_hash');
+            // storedHash 存在时必须匹配；不存在（历史班级）则由 data 解密兜底
             if (storedHash && passwordHash !== storedHash) {
                 return handleResponse(401, { error: '密码错误' });
             }
