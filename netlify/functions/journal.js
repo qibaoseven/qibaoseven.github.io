@@ -1,5 +1,5 @@
 // ========================================
-// StudentOS v0.44
+// OpenStu v0.45
 // Author: github@qibaoseven, bilibili@七宝-Seven
 // ========================================
 // Journal 学生历程子系统 - 纯文本存储

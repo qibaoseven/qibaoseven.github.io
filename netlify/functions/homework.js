@@ -1,5 +1,5 @@
 // ========================================
-// StudentOS v0.44
+// OpenStu v0.45
 // Author: github@qibaoseven, bilibili@七宝-Seven
 // ========================================
 // Homework 子系统 - 基于位压缩存储

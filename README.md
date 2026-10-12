@@ -1,6 +1,6 @@
-# StudentOS 班级管理系统
+# OpenStu 班级管理系统
 
-> **版本** v0.44 · **作者** github@qibaoseven · bilibili@七宝-Seven
+> **版本** v0.45 · **作者** github@qibaoseven · bilibili@七宝-Seven
 
 一个面向班级管理的 Web 系统，支持班级量化管理、学分记录、抽奖、惩罚、金币、作业提交与学生历程等功能。采用**纯前端 SPA + Netlify Functions 服务端 + Netlify Blobs 存储**架构，无需自建数据库。
 
@@ -116,7 +116,7 @@ cd qibaoseven.github.io
 | `admin` | 管理员 | 分数/分组/日志/备份等管理 |
 | `user` | 普通学生 | 我的分数、排名、抽奖、惩罚、金币、职位 |
 
-### 学生历程（v0.44 新增）
+### 学生历程（v0.45 新增）
 - 每份历程就是一个**纯文本字符串**，按学生分别存在班级存储桶的 `journal_{学号}` 键上
 - **只可追加，不可删除**：前端没有删除按钮，后端也没有任何删除/覆盖/清空接口
 - 权限：`user` 只能看和写自己的；`admin` / `root` 能看全班并给任何人追加，但同样不能删
@@ -185,11 +185,11 @@ cd qibaoseven.github.io
 
 | 版本 | 说明 |
 |------|------|
+| v0.45 | 新增学生历程（纯文本 · 只能追加不可删除）与 `GET /students` 学生名册接口；修复密码哈希校验被静默跳过的安全漏洞；项目更名 **OpenStu** |
 | v0.44 | 新增作业提交子系统（前后端），作业数据加密，全量版头更新 |
-| v0.44+ | 新增学生历程（纯文本存储，只能追加不能删除） |
 | v0.43 | 稳定版，登录/密码体系，多角色权限 |
 | v0.42 | 引入 Netlify Functions API 与 Blobs 云存储 |
 
 ---
 
-© 2026 StudentOS · qibaoseven
+© 2026 OpenStu · qibaoseven
