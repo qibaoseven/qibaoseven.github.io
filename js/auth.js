@@ -34,7 +34,8 @@ function getPagePermissionString(pageName) {
         'account': 'rwxrwxrwx',
         'autoEvents': 'r--r--rwx',
         'positions': 'rw-rw-rwx',
-        'homework': 'r--r-xr-x'
+        'homework': 'r--r-xr-x',
+        'journal': 'rwxrwxrwx'
     };
     return permissionMap[pageName] || 'rwxrwxrwx';
 }
@@ -90,6 +91,11 @@ async function handleLogin() {
     window.currentPage = 'login';
     
     window.utils.addViewLog('登录', `用户 ${username} 登录`);
+
+    // 同步「有哪些学生」，供学生历程等按学号索引的模块使用
+    if (window.dataManager && window.dataManager.syncJournalStudents) {
+        window.dataManager.syncJournalStudents();
+    }
     
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('mainScreen').style.display = 'block';
@@ -182,6 +188,7 @@ function renderSidebar() {
         { id: 'account', icon: '👤', name: '账号管理', permission: null, page: 'account' },
         { id: 'positions', icon: '👔', name: '职位系统', permission: null, page: 'positions' },
         { id: 'homework', icon: '📚', name: '作业提交', permission: null, page: 'homework' },
+        { id: 'journal', icon: '📖', name: '学生历程', permission: null, page: 'journal' },
         { id: 'logout', icon: '🚪', name: '退出系统', permission: null, page: 'logout' }
     ];
     
@@ -227,6 +234,7 @@ function renderSidebar() {
                 case 'account': if (window.account) window.account.showAccountManagement(); break;
                 case 'positions': if (window.positions) window.positions.showPositions(); break;
                 case 'homework': if (window.homework) window.homework.showHomework(); break;
+                case 'journal': if (window.journal) window.journal.showJournal(); break;
             }
         };
         sidebar.appendChild(div);

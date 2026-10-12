@@ -2,7 +2,7 @@
 
 > **版本** v0.44 · **作者** github@qibaoseven · bilibili@七宝-Seven
 
-一个面向班级管理的 Web 系统，支持班级量化管理、学分记录、抽奖、惩罚、金币与作业提交等功能。采用**纯前端 SPA + Netlify Functions 服务端 + Netlify Blobs 存储**架构，无需自建数据库。
+一个面向班级管理的 Web 系统，支持班级量化管理、学分记录、抽奖、惩罚、金币、作业提交与学生历程等功能。采用**纯前端 SPA + Netlify Functions 服务端 + Netlify Blobs 存储**架构，无需自建数据库。
 
 ### 🌐 官方部署网址
 
@@ -35,6 +35,7 @@
 | 📋 **操作日志** | 全量操作记录，含搜索 |
 | 💾 **数据备份** | 导出 / 导入 / JsonBin 备份 |
 | 📚 **作业提交** | 布置作业、提交登记、提交率图表、近 30 天积极度排行榜 |
+| 📖 **学生历程** | 纯文本成长记录，学生只看/只写自己，管理员看全班；**只可追加，不可删除** |
 
 ---
 
@@ -114,6 +115,13 @@ cd qibaoseven.github.io
 | `admin` | 管理员 | 分数/分组/日志/备份等管理 |
 | `user` | 普通学生 | 我的分数、排名、抽奖、惩罚、金币、职位 |
 
+### 学生历程（v0.44 新增）
+- 每份历程就是一个**纯文本字符串**，按学生分别存在班级存储桶的 `journal_{学号}` 键上
+- **只可追加，不可删除**：前端没有删除按钮，后端也没有任何删除/覆盖/清空接口
+- 权限：`user` 只能看和写自己的；`admin` / `root` 能看全班并给任何人追加，但同样不能删
+- 接口**不需要班级密码**（班级密码已经把整班数据加密封住了，历程若再加密就见不到文本了）
+- 追加时自动在行首写入 `[时间]〔记录人〕`，正文可用「导出」保存为 `.txt`
+
 ### 作业系统（v0.44 新增）
 - 作业数据采用 **位压缩 + AES-256-GCM 加密** 存储，每个学生每天每学科占 1 bit
 - 学生维度含 **0 号机器人哨兵**（索引 0），真实学生从学号 1 开始
@@ -151,11 +159,12 @@ cd qibaoseven.github.io
 │       ├── dashboard.js / my_score.js / score.js / group.js / rank.js
 │       ├── daily_report.js / gacha.js / punishment.js / gold.js / logs.js
 │       ├── backup.js / account.js / auto_events.js / positions.js
-│       ├── class_select.js / homework.js
+│       ├── class_select.js / homework.js / journal.js
 ├── netlify/
 │   └── functions/          # 服务端
-│       ├── api.js          # 主 API（班级 + 作业）
+│       ├── api.js          # 主 API（班级 + 作业 + 历程）
 │       ├── homework.js     # 作业子系统
+│       ├── journal.js      # 学生历程子系统（纯文本 · 只可追加）
 │       └── blobs.js        # 存储封装
 ├── tools/fileutils.py      # 文件处理工具
 └── data/                   # 数据收集指令文档
@@ -174,6 +183,7 @@ cd qibaoseven.github.io
 | 版本 | 说明 |
 |------|------|
 | v0.44 | 新增作业提交子系统（前后端），作业数据加密，全量版头更新 |
+| v0.44+ | 新增学生历程（纯文本存储，只能追加不能删除） |
 | v0.43 | 稳定版，登录/密码体系，多角色权限 |
 | v0.42 | 引入 Netlify Functions API 与 Blobs 云存储 |
 

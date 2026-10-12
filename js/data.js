@@ -27,6 +27,15 @@ function saveAllData() {
     if (window.saveAllDataToCloud) window.saveAllDataToCloud().catch(e => console.warn('保存失败', e));
 }
 
+// 学生历程只需要"有哪些学生"，直接复用 scores 里的学号/姓名，
+// 无需在班级数据里新增字段（历程正文单独存在班级桶的 journal_{学号}）
+function syncJournalStudents() {
+    if (window.journal && typeof window.journal.syncStudents === 'function') {
+        window.journal.syncStudents();
+    }
+}
+
+
 function clearLocalCache() {
     window.appData = {
         users: {}, scores: {}, groups: {}, rules: {}, logs: [],
@@ -76,6 +85,7 @@ function batchImportData(importedData) {
         results.total++;
     });
     saveAllData();
+    syncJournalStudents();
     return results;
 }
 
@@ -137,5 +147,5 @@ async function runAutoEvents() {
 
 window.dataManager = {
     saveData, saveAllData, clearLocalCache,
-    batchImportData, runAutoEvents
+    batchImportData, runAutoEvents, syncJournalStudents
 };

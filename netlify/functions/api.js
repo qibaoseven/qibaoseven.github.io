@@ -13,6 +13,13 @@ const {
     getHomeworkData,
     getStudentHomework
 } = require('./homework');
+const {
+    getJournal,
+    getJournals,
+    appendJournal,
+    exportJournals,
+    normalizeStudentId
+} = require('./journal');
 
 const JSON_PREFIX = 'JSON:';
 const ALGORITHM = 'aes-256-gcm';
@@ -178,7 +185,9 @@ exports.handler = async (event) => {
         }
         
         // GET /api/class/{id}
-        if (httpMethod === 'GET' && requestPath.includes('/api/class/') && !requestPath.includes('/homework')) {
+        // 读取整班数据（homework / journal 有独立端点，必须排除在外）
+        if (httpMethod === 'GET' && requestPath.includes('/api/class/') &&
+            !requestPath.includes('/homework') && !requestPath.includes('/journal')) {
             const classIdMatch = requestPath.match(/class_\d+/);
             const classId = classIdMatch ? classIdMatch[0] : '';
             const password = headers['x-password'];
@@ -215,7 +224,9 @@ exports.handler = async (event) => {
         }
         
         // POST /api/class/{id}
-        if (httpMethod === 'POST' && requestPath.includes('/api/class/') && !requestPath.includes('/homework')) {
+        // 保存整班数据（homework / journal 有独立端点，必须排除在外）
+        if (httpMethod === 'POST' && requestPath.includes('/api/class/') &&
+            !requestPath.includes('/homework') && !requestPath.includes('/journal')) {
             const classIdMatch = requestPath.match(/class_\d+/);
             const classId = classIdMatch ? classIdMatch[0] : '';
             const password = headers['x-password'];
@@ -609,6 +620,125 @@ exports.handler = async (event) => {
             }
         }
         
+        // ============================================
+        // 学生历程接口（纯文本 · 只可追加）
+        // 无删除/覆盖接口，数据只在追加时增长
+        // ============================================
+
+        // GET /api/class/{id}/journal/{studentId}
+        // 读取某个学生的历程全文
+        if (httpMethod === 'GET' && requestPath.includes('/api/class/') && requestPath.includes('/journal/')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+
+            const sidMatch = requestPath.match(/\/journal\/([A-Za-z0-9_-]+)/);
+            const studentId = normalizeStudentId(sidMatch ? sidMatch[1] : null);
+            if (!studentId) {
+                return handleResponse(400, { error: '无效的学号' });
+            }
+
+            const classStore = await getStoreForClass(classId);
+            const text = await getJournal(classStore, studentId);
+
+            return handleResponse(200, {
+                student_id: studentId,
+                journal: text,
+                length: text.length
+            });
+        }
+
+        // GET /api/class/{id}/journals?ids=1,2,3
+        // 批量读取多个学生的历程（管理员查看班级用）
+        if (httpMethod === 'GET' && requestPath.includes('/api/class/') && requestPath.includes('/journals')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+
+            const url = new URL(requestPath, 'http://localhost');
+            const idsParam = url.searchParams.get('ids') || '';
+            const ids = idsParam.split(',').map(s => s.trim()).filter(Boolean);
+
+            if (ids.length > 200) {
+                return handleResponse(400, { error: '一次最多查询 200 名学生' });
+            }
+
+            const classStore = await getStoreForClass(classId);
+            const journals = await getJournals(classStore, ids);
+
+            const result = {};
+            Object.entries(journals).forEach(([sid, text]) => {
+                result[sid] = { journal: text, length: text.length };
+            });
+
+            return handleResponse(200, { journals: result });
+        }
+
+        // POST /api/class/{id}/journal
+        // 追加一段历程文本 —— 唯一的写入口，绝不覆盖、绝不删除
+        if (httpMethod === 'POST' && requestPath.includes('/api/class/') && requestPath.includes('/journal')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+
+            const payload = JSON.parse(body || '{}');
+            const studentId = normalizeStudentId(payload.student_id);
+            if (!studentId) {
+                return handleResponse(400, { error: '缺少或非法的 student_id' });
+            }
+
+            const content = payload.content;
+            if (typeof content !== 'string' || content.trim() === '') {
+                return handleResponse(400, { error: 'content 不能为空' });
+            }
+
+            const classStore = await getStoreForClass(classId);
+
+            try {
+                const result = await appendJournal(classStore, studentId, content, {
+                    operator: payload.operator || '',
+                    operator_role: payload.operator_role || '',
+                    operator_name: payload.operator_name || ''
+                });
+
+                return handleResponse(200, {
+                    message: '已追加',
+                    student_id: studentId,
+                    appended: result.appended,
+                    journal: result.journal,
+                    length: result.length
+                });
+            } catch (e) {
+                return handleResponse(400, { error: e.message });
+            }
+        }
+
+        // GET /api/class/{id}/journal-export?ids=1,2,3&format=txt
+        // 导出全班历程为一个纯文本文件
+        if (httpMethod === 'GET' && requestPath.includes('/api/class/') && requestPath.includes('/journal-export')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+
+            const url = new URL(requestPath, 'http://localhost');
+            const idsParam = url.searchParams.get('ids') || '';
+            const ids = idsParam.split(',').map(s => s.trim()).filter(Boolean);
+            const namesParam = url.searchParams.get('names') || '';
+            const names = namesParam.split(',');
+
+            const students = ids.map((id, i) => ({ id, name: names[i] || '' }));
+
+            const classStore = await getStoreForClass(classId);
+            const result = await exportJournals(classStore, students);
+
+            const stamp = new Date().toISOString().split('T')[0];
+            return {
+                statusCode: 200,
+                headers: {
+                    'Content-Type': 'text/plain; charset=utf-8',
+                    'Content-Disposition': `attachment; filename="journals_${stamp}.txt"`,
+                    ...corsHeaders
+                },
+                body: result.text || ''
+            };
+        }
+
         console.log('Error: requests invalid');
         return handleResponse(404, { error: 'Not Found', 'path': requestPath });
         
