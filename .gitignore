@@ -4,3 +4,10 @@ node_modules/
 netlify/functions/*.zip
 .DS_Store
 *.log
+
+# 本地运行时的文件存储（Flask 版使用，桶名=目录名、key=文件名）
+# 保留 data/ 下原有的说明文档，只忽略运行产生的数据
+/data/studentos-main/
+/data/class-*/
+__pycache__/
+*.pyc
