@@ -87,13 +87,15 @@ void loop() {
     case res:
       ESP.restart();
       break;
-    case readCard:
+    case readCard: {
       uint8_t carduid[]={0,0,0,0,0,0,0};
       uint8_t uidlenth=0;
       if(now<delayTime[readCard])break;
       if(pn532.readPassiveTargetID(PN532_MIFARE_ISO14443A,carduid,&uidlenth)){
         //等待下一步编写
       }
+      break;
+    }
   }
 }
 
