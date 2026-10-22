@@ -9,6 +9,8 @@
 #   · /students 必须先于整班 GET /api/class/{id}
 #   · /homework/init 等子路径必须先于 /homework
 #   · /journal/{sid} 与 /journal-export 必须先于 /journal
+#   · /uuids/add 必须先于 /uuids（否则会被整份推送分支吃掉）
+#   · /uuids 必须排除在整班 GET/POST 之外
 #
 # 前端请求的路径是 /.netlify/functions/api/...，为了「前端零改动」，
 # 这里同时注册该前缀与 /api 前缀两套蓝图。
@@ -42,6 +44,14 @@ from journal import (
     append_journal,
     export_journals,
     normalize_student_id,
+)
+from uuids import (
+    get_uuids,
+    save_uuids,
+    add_uuid,
+    find_student_by_uid,
+    parse_uid,
+    normalize_uuid_student_id,
 )
 from netlify_compat import (
     derive_key, hash_password, encrypt_data, decrypt_data, extract_students,
@@ -524,14 +534,29 @@ def route_homework_student(path):
 
 
 def route_homework_update(path):
+    """POST /api/class/{id}/homework/update —— 支持 student_id 学号 或 uid 卡片 UID"""
     class_id = get_class_id(path)
-    payload = body_json()
+    try:
+        payload = body_json()
+    except Exception:
+        return json_response({'error': '请求体不是合法 JSON'}, 400)
+    if not isinstance(payload, dict):
+        return json_response({'error': '请求体不是合法 JSON'}, 400)
+
     student_id = payload.get('student_id')
     target_date = payload.get('target_date')
     subject_id = payload.get('subject_id')
+    # uid / uuid / card_uid 三个键名都认，方便刷卡设备直接传
+    raw_uid = payload.get('uid')
+    if raw_uid is None:
+        raw_uid = payload.get('uuid')
+    if raw_uid is None:
+        raw_uid = payload.get('card_uid')
 
-    if student_id is None or not target_date or subject_id is None:
-        return json_response({'error': '缺少必要参数: student_id, target_date, subject_id'}, 400)
+    if student_id is None and raw_uid is None:
+        return json_response({'error': '缺少学生标识: 需要 student_id 或 uid'}, 400)
+    if not target_date or subject_id is None:
+        return json_response({'error': '缺少必要参数: target_date, subject_id'}, 400)
 
     password = request.headers.get('X-Password')
     password_hash = request.headers.get('X-Password-Hash')
@@ -544,9 +569,23 @@ def route_homework_update(path):
         return json_response({'error': '密码错误'}, 401)
 
     try:
-        result = asyncio_run(update_homework(class_store, student_id, target_date, subject_id, password))
+        # 用 uid 认人：把 UID 反查成学号
+        if student_id is None:
+            if parse_uid(raw_uid) is None:
+                return json_response({'error': '缺少或非法的 uid（1~7 字节）'}, 400)
+            uuids_map = asyncio_run(get_uuids(class_store))
+            resolved = find_student_by_uid(uuids_map, raw_uid)
+            if resolved is None:
+                return json_response({'error': '该 UID 尚未绑定学号'}, 404)
+            resolved_id = resolved
+        else:
+            resolved_id = normalize_uuid_student_id(student_id)
+            if resolved_id is None or resolved_id <= 0:
+                return json_response({'error': f'无效的学生ID: {student_id}'}, 400)
+
+        result = asyncio_run(update_homework(class_store, resolved_id, target_date, subject_id, password))
         if result:
-            return json_response({'message': '更新成功', 'student_id': student_id,
+            return json_response({'message': '更新成功', 'student_id': resolved_id,
                                   'target_date': target_date, 'subject_id': subject_id})
         return json_response({'error': '保存失败'}, 500)
     except Exception as error:
@@ -588,6 +627,113 @@ def route_homework_day(path):
         if 'Unsupported state' in msg or '数据格式错误' in msg:
             return json_response({'error': '密码错误'}, 401)
         return json_response({'error': msg}, 400)
+
+
+# ---------- UID 字典（学号 -> 卡片原生 7 字节 UID）----------
+# 只开放三个入口：读取全部 / 整份覆盖 / 追加单个
+# 数据不加密，但三个接口都要过密码校验，并用整班数据解密验真。
+
+def _uuid_store_verified():
+    """
+    返回 (class_store, 错误响应)。
+    校验 X-Password / X-Password-Hash，并用整班数据真解密一次。
+    """
+    password = request.headers.get('X-Password')
+    password_hash = request.headers.get('X-Password-Hash')
+    if not password or not password_hash:
+        return None, json_response({'error': '需要密码验证'}, 401)
+
+    class_id = get_class_id(request.path)
+    class_store = get_store_for_class(class_id)
+    stored_hash = asyncio_run(class_store.get('password_hash'))
+    if stored_hash and password_hash != stored_hash:
+        return None, json_response({'error': '密码错误'}, 401)
+
+    encrypted = asyncio_run(class_store.get('data'))
+    if encrypted:
+        try:
+            decrypt_data(encrypted, password)
+        except Exception:
+            return None, json_response({'error': '密码错误'}, 401)
+
+    return class_store, None
+
+
+def route_uuids_get(path):
+    """GET /api/class/{id}/uuids —— 读取整个字典"""
+    class_store, err = _uuid_store_verified()
+    if err:
+        return err
+    uuids = asyncio_run(get_uuids(class_store))
+    return json_response({
+        'class_id': get_class_id(path),
+        'count': len(uuids),
+        'uuids': {str(k): v for k, v in uuids.items()},
+    })
+
+
+def route_uuids_post(path):
+    """POST /api/class/{id}/uuids —— 整份覆盖"""
+    try:
+        payload = body_json()
+    except Exception:
+        return json_response({'error': '请求体不是合法 JSON'}, 400)
+
+    # 兼容两种写法：直接给字典，或包一层 { uuids: {...} }
+    mapping = payload.get('uuids') if isinstance(payload, dict) and 'uuids' in payload else payload
+    if not isinstance(mapping, dict) or isinstance(mapping, (list, tuple)):
+        return json_response({'error': '缺少 uuids（学号 -> UID 的 dict）'}, 400)
+
+    class_store, err = _uuid_store_verified()
+    if err:
+        return err
+
+    try:
+        result = asyncio_run(save_uuids(class_store, mapping))
+    except ValueError as e:
+        return json_response({'error': str(e)}, 400)
+
+    return json_response({
+        'message': '已保存',
+        'class_id': get_class_id(path),
+        'count': result['count'],
+        'uuids': result['uuids'],
+    })
+
+
+def route_uuids_add(path):
+    """POST /api/class/{id}/uuids/add —— 追加 / 更新单个学号"""
+    try:
+        payload = body_json()
+    except Exception:
+        return json_response({'error': '请求体不是合法 JSON'}, 400)
+
+    if not isinstance(payload, dict):
+        return json_response({'error': '请求体不是合法 JSON'}, 400)
+
+    student_id = payload.get('student_id', payload.get('id'))
+    uid = payload.get('uid', payload.get('uuid'))
+    if student_id is None:
+        return json_response({'error': '缺少 student_id'}, 400)
+    if uid is None:
+        return json_response({'error': '缺少 uid'}, 400)
+
+    class_store, err = _uuid_store_verified()
+    if err:
+        return err
+
+    try:
+        result = asyncio_run(add_uuid(class_store, student_id, uid))
+    except ValueError as e:
+        return json_response({'error': str(e)}, 400)
+
+    return json_response({
+        'message': '已追加' if result['added'] else '已更新',
+        'class_id': get_class_id(path),
+        'added': result['added'],
+        'count': result['count'],
+        'uuids': result['uuids'],
+    })
 
 
 # ---------- 学生历程 ----------
@@ -704,18 +850,29 @@ def dispatch(path):
         # 5. GET 整班数据
         if (method == 'GET' and '/api/class/' in path
                 and '/homework' not in path and '/journal' not in path
-                and '/students' not in path):
+                and '/students' not in path and '/uuids' not in path):
             return route_class_get(path)
 
         # 6. POST 保存整班数据
         if (method == 'POST' and '/api/class/' in path
                 and '/homework' not in path and '/journal' not in path
-                and '/students' not in path):
+                and '/students' not in path and '/uuids' not in path):
             return route_class_post(path)
 
         # 7. GET /api/template
         if method == 'GET' and '/api/template' in path:
             return route_template(path)
+
+        # ---- UID 字典 ----
+        # add 必须排在整份之前，否则 '/uuids' in path 会把 add 吃掉
+        if method == 'GET' and '/api/class/' in path and '/uuids' in path:
+            return route_uuids_get(path)
+
+        if method == 'POST' and '/api/class/' in path and '/uuids/add' in path:
+            return route_uuids_add(path)
+
+        if method == 'POST' and '/api/class/' in path and '/uuids' in path:
+            return route_uuids_post(path)
 
         # ---- 作业 ----
         if method == 'POST' and '/api/class/' in path and '/homework/init' in path:
