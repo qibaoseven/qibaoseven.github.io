@@ -79,38 +79,91 @@
 }
 
 /* ========================================
-   窄屏（手机）布局：侧边栏改成顶部横向可滑动菜单
-   · 原布局 .sidebar 固定 250px + .content-area flex:1，
-     在 390px 宽的屏幕上两者相加必然溢出，导致整页横向滚动
-   · 这里只在 <=720px 生效，桌面端完全不变
+   手机端导航：汉堡按钮 + 全屏抽屉菜单
+   · 手机默认只显示左上角「三横」按钮，不再常驻一排页面标签
+   · 点开后侧边栏铺满整屏（覆盖内容），选完任意一项自动收起
+   · 桌面端（>720px）完全不变：侧边栏常驻，汉堡按钮隐藏
    ======================================== */
+
+/* 汉堡按钮：桌面端隐藏 */
+.menu-toggle {
+    display: none;
+}
+
+/* 遮罩层：桌面端隐藏 */
+.sidebar-overlay {
+    display: none;
+}
+
 @media (max-width: 720px) {
+    /* ---------- 顶部汉堡按钮 ---------- */
+    .menu-toggle {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 5px;
+        width: 42px;
+        height: 42px;
+        padding: 0 9px;
+        margin-right: 12px;
+        border: none;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.22);
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+        flex-shrink: 0;
+        box-sizing: border-box;
+    }
+
+    .menu-toggle span {
+        display: block;
+        height: 2.5px;
+        width: 100%;
+        border-radius: 2px;
+        background: #fff;
+        transition: transform .25s ease, opacity .2s ease;
+    }
+
+    /* 打开时变成 X */
+    .menu-toggle.active span:nth-child(1) {
+        transform: translateY(7.5px) rotate(45deg);
+    }
+    .menu-toggle.active span:nth-child(2) {
+        opacity: 0;
+    }
+    .menu-toggle.active span:nth-child(3) {
+        transform: translateY(-7.5px) rotate(-45deg);
+    }
+
+    /* ---------- 顶栏在手机上更紧凑，给内容留空间 ---------- */
+    .header {
+        padding: 12px 14px;
+        justify-content: flex-start;
+    }
+
+    .user-info {
+        gap: 10px;
+        min-width: 0;
+    }
+
+    .user-avatar {
+        font-size: 1.9em;
+        flex-shrink: 0;
+    }
+
+    .user-details {
+        min-width: 0;
+    }
+
+    /* 抽奖时间徽章在手机上隐藏，避免顶栏挤成两行 */
+    .friday-badge {
+        display: none;
+    }
+
+    /* ---------- 布局：内容区占满 ---------- */
     .main-content {
         flex-direction: column;
-    }
-
-    .sidebar {
-        width: 100%;
-        flex-shrink: 0;
-        display: flex;
-        flex-direction: row;
-        overflow-x: auto;
-        overflow-y: hidden;
-        padding: 8px;
-        gap: 6px;
-        border-right: none;
-        border-bottom: 1px solid #ffd1b8;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    .sidebar .menu-item {
-        flex: 0 0 auto;
-        width: auto;
-        padding: 8px 14px;
-        border-radius: 20px;
-        font-size: .92em;
-        white-space: nowrap;
-        margin: 0;
+        position: relative;
     }
 
     .content-area {
@@ -120,6 +173,84 @@
         box-sizing: border-box;
     }
 
+    /* ---------- 抽屉式侧边栏：全屏覆盖 ---------- */
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        max-width: 100%;
+        z-index: 1200;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 16px 14px calc(16px + env(safe-area-inset-bottom));
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        background: #fffaf6;
+        border-right: none;
+        box-shadow: 0 0 40px rgba(0, 0, 0, 0.25);
+        /* 默认收起。
+           刻意不用 transition —— iOS WebKit 上若页面未触发重排，
+           过渡可能永久停在中途，导致菜单卡在屏幕外或半透明不可见。
+           开关一律即时生效，可靠优先于动效。 */
+        transform: translateX(-100%);
+        opacity: 0;
+        visibility: hidden;
+    }
+
+    .sidebar.open {
+        transform: translateX(0);
+        opacity: 1;
+        visibility: visible;
+    }
+
+    .sidebar .menu-item {
+        flex: 0 0 auto;
+        width: auto;
+        padding: 13px 16px;
+        border-radius: 12px;
+        font-size: 1em;
+        white-space: nowrap;
+        margin: 0;
+        text-align: left;
+        justify-content: flex-start;
+    }
+
+    /* 选中项：渐变底 + 白字，加上更明显的阴影，避免和普通项混淆 */
+    .sidebar .menu-item.active {
+        color: #fff;
+        box-shadow: 0 4px 14px rgba(255, 78, 78, 0.45);
+    }
+
+    /* 抽屉里不启用桌面端的 hover 左移效果 */
+    .sidebar .menu-item:hover {
+        padding-left: 16px;
+    }
+
+    /* 遮罩：菜单打开时压住背后的页面 */
+    .sidebar-overlay {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 1100;
+        background: rgba(0, 0, 0, 0.35);
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .sidebar-overlay.open {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    /* 菜单打开时禁止背景滚动 */
+    body.menu-open {
+        overflow: hidden;
+    }
+
+    /* ---------- 内容排版微调 ---------- */
     .content-card {
         padding: 16px;
         margin-bottom: 14px;

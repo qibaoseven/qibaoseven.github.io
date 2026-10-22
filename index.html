@@ -48,6 +48,9 @@
         <!-- 主界面 -->
         <div class="main-screen" id="mainScreen" style="display: none;">
             <div class="header">
+                <button class="menu-toggle" id="menuToggle" type="button" aria-label="打开菜单" aria-expanded="false">
+                    <span></span><span></span><span></span>
+                </button>
                 <div class="user-info">
                     <span class="user-avatar" id="userAvatar" onclick="window.account.showAvatarSelector()">👤</span>
                     <div class="user-details">
@@ -60,6 +63,7 @@
                 </div>
             </div>
             <div class="main-content">
+                <div class="sidebar-overlay" id="sidebarOverlay"></div>
                 <div class="sidebar" id="sidebar"></div>
                 <div class="content-area" id="contentArea"></div>
             </div>
@@ -78,6 +82,7 @@
     <script src="js/utils.js"></script>
     <script src="js/data.js"></script>
     <script src="js/components/modal.js"></script>
+    <script src="js/nav.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/pages/dashboard.js"></script>
     <script src="js/pages/my_score.js"></script>
