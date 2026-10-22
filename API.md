@@ -1,6 +1,6 @@
 # OpenStu API 使用文档
 
-> **版本** v0.45 · **作者** github@qibaoseven · bilibili@七宝-Seven
+> **版本** v0.46 · **作者** github@qibaoseven · bilibili@七宝-Seven
 > 适用于部署在 Netlify 的站点。以下示例 URL 使用占位 `https://<你的域名>`，实际请替换。
 
 ---

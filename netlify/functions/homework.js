@@ -1,5 +1,5 @@
 // ========================================
-// OpenStu v0.45
+// OpenStu v0.46
 // Author: github@qibaoseven, bilibili@七宝-Seven
 // ========================================
 // Homework 子系统 - 基于位压缩存储

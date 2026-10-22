@@ -1,5 +1,5 @@
 # ========================================
-# OpenStu v0.45
+# OpenStu v0.46
 # Author: github@qibaoseven, bilibili@七宝-Seven
 # ========================================
 # Flask 主应用 —— netlify/functions/api.js 的 1:1 移植

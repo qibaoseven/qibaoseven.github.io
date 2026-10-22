@@ -1,5 +1,5 @@
 # ========================================
-# OpenStu v0.45
+# OpenStu v0.46
 # Author: github@qibaoseven, bilibili@七宝-Seven
 # ========================================
 # UUID 子系统 - 学号 -> 卡片原生 UID(7 字节)
