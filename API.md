@@ -311,12 +311,33 @@ curl -H "X-Password: $PASS" -H "X-Password-Hash: $HASH" \
 **请求体**
 ```jsonc
 {
-  "student_id": 23,
+  "student_id": 23,          // 学号，与 uid 二选一
   "target_date": "2026-08-28",
-  "subject_id": 0      // 0=语文（按 subject_names 索引）
+  "subject_id": 0            // 0=语文（按 subject_names 索引）
 }
 ```
 将该学生该学科置为 `1`（已提交）。返回 `{ message: "更新成功", ... }`。
+
+#### 用卡片 UID 代替学号（刷卡场景）
+
+`student_id` 和 `uid` **二选一**即可。给 `uid` 时，服务端会拿它去 3.10 的 UID 字典里反查学号；返回体里的 `student_id` 是**反查出来的真实学号**，方便设备端核对。
+
+```jsonc
+{
+  "uid": "12:34:56:78:9A:BC:DE",   // 也接受 [18,52,86,120,154,188,222] / 连写 hex / base64
+  "target_date": "2026-08-28",
+  "subject_id": 0
+}
+```
+
+`uid` 的键名也可以写成 `uuid` 或 `card_uid`，三者等价。大小写、分隔符（`:` `-` 空格）都无所谓，也就是刷卡器读到什么就传什么。
+
+| 情况 | 结果 |
+|---|---|
+| `student_id` 与 `uid` 都不传 | `400` 缺少学生标识 |
+| `uid` 不在 3.10 的字典里 | `404` 该 UID 尚未绑定学号（先调用 `/uuids/add` 绑定） |
+| `uid` 不是 1~7 字节 | `400` |
+| 两个都传 | 以 `student_id` 为准 |
 
 ### 3.8 布置某天作业（覆盖整日）
 `POST /api/class/{id}/homework/day`
@@ -348,6 +369,75 @@ curl -H "X-Password: $PASS" -H "X-Password-Hash: $HASH" \
 | `X-Password` / `X-Password-Hash` | 班级密码 |
 
 删除该班级的作业数据与元数据。返回 `{ message: "作业数据已删除" }`。
+
+---
+
+### 3.10 UID 字典（学号 → 卡片原生 7 字节 UID）
+
+校园卡（MIFARE Classic / CUID）出厂带一个 **4 或 7 字节的唯一 UID**，普通克隆工具刷不干净，适合当"物理身份"。系统把它单独存成一份字典，**只放在作业子系统里**，且**只通过下面三个接口读写**（网页端不提供编辑入口）。
+
+**存储位置**：班级存储桶的 `uuids` 键，内容为 JSON 文本：
+```json
+{ "1": [18,52,86,120,154,188,222], "2": [0,0,0,0,0,0,11] }
+```
+即 `int（学号）→ 7 字节数组`。不足 7 字节的值会**左补 `0x00`** 到定长 7 字节。
+
+**UID 传参格式**（三种写法都接受）：
+- 字节数组：`[0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE]`
+- 十六进制串：`"12:34:56:78:9A:BC:DE"`、`"123456789ABCDE"`、`"0x12 0x34 ..."`
+- 单字节 / 4 字节也行，会自动左补零
+
+> 🔒 三个接口都要求 `X-Password` + `X-Password-Hash`，并会用整班数据解密一次来验证密码真伪。
+
+#### 3.10.1 读取整个字典
+`GET /api/class/{id}/uuids`
+
+```bash
+curl "$BASE/api/class/$CLASS/uuids" \
+  -H "X-Password: $PWD" -H "X-Password-Hash: $HASH"
+```
+返回：
+```json
+{ "class_id": "class_1780...", "count": 2, "uuids": { "1": [18,52,86,120,154,188,222] } }
+```
+未绑定过时返回 `{ "count": 0, "uuids": {} }`。
+
+#### 3.10.2 推送整个字典（覆盖式）
+`POST /api/class/{id}/uuids`
+
+请求体直接给字典，或包一层 `{ "uuids": {...} }`：
+
+```bash
+curl -X POST "$BASE/api/class/$CLASS/uuids" \
+  -H "X-Password: $PWD" -H "X-Password-Hash: $HASH" \
+  -H "Content-Type: application/json" \
+  -d '{"1":[18,52,86,120,154,188,222],"2":"AA:BB:CC:DD:EE:FF:01"}'
+```
+返回 `{ message, class_id, count, uuids }`。
+
+⚠️ **覆盖语义**：原有条目若不在本次请求里会被删除。只想加一条请用 3.10.3。
+
+#### 3.10.3 追加 / 更新单个学号
+`POST /api/class/{id}/uuids/add`
+
+```bash
+curl -X POST "$BASE/api/class/$CLASS/uuids/add" \
+  -H "X-Password: $PWD" -H "X-Password-Hash: $HASH" \
+  -H "Content-Type: application/json" \
+  -d '{"student_id": 7, "uid": [9,8,7,6,5,4,3]}'
+```
+返回 `{ message, class_id, added, count, uuids }`；`added=true` 表示新建，`false` 表示覆盖了该学号原来的 UID。 **其他学号的条目原样保留**（内部按"读 → 改 → 写"整体写回）。
+
+#### 校验规则
+| 情况 | 结果 |
+|---|---|
+| 学号非整数 / 负数 | `400` 非法学号 |
+| UID 不是 1~7 字节 | `400` UID 非法 |
+| 同一 UID 绑到第二个学号 | `400` 该 UID 已绑定学号 N |
+| 同一份请求里出现重复 UID | `400` 存在重复的 UID |
+| 密码或哈希错误 | `401` |
+
+**要点**：一个 UID 只能绑一个学号，避免刷卡时身份歧义；同一个学号重复写入则视为改绑。
 
 ---
 

@@ -20,6 +20,12 @@ const {
     exportJournals,
     normalizeStudentId
 } = require('./journal');
+const {
+    getUuids,
+    saveUuids,
+    addUuid,
+    parseUid
+} = require('./uuids');
 
 const JSON_PREFIX = 'JSON:';
 const ALGORITHM = 'aes-256-gcm';
@@ -284,7 +290,7 @@ exports.handler = async (event) => {
         // 读取整班数据（homework / journal / students 有独立端点，必须排除在外）
         if (httpMethod === 'GET' && requestPath.includes('/api/class/') &&
             !requestPath.includes('/homework') && !requestPath.includes('/journal') &&
-            !requestPath.includes('/students')) {
+            !requestPath.includes('/students') && !requestPath.includes('/uuids')) {
             const classIdMatch = requestPath.match(/class_\d+/);
             const classId = classIdMatch ? classIdMatch[0] : '';
             const password = headers['x-password'];
@@ -325,7 +331,7 @@ exports.handler = async (event) => {
         // 保存整班数据（homework / journal / students 有独立端点，必须排除在外）
         if (httpMethod === 'POST' && requestPath.includes('/api/class/') &&
             !requestPath.includes('/homework') && !requestPath.includes('/journal') &&
-            !requestPath.includes('/students')) {
+            !requestPath.includes('/students') && !requestPath.includes('/uuids')) {
             const classIdMatch = requestPath.match(/class_\d+/);
             const classId = classIdMatch ? classIdMatch[0] : '';
             const password = headers['x-password'];
@@ -416,6 +422,161 @@ exports.handler = async (event) => {
         // 作业管理接口
         // ============================================
         
+        // ============================================
+        // UUID 接口（作业子系统）—— 学号 -> 卡片原生 7 字节 UID
+        // 只开放三个入口：读取全部 / 整份覆盖 / 追加单个
+        // ============================================
+
+        // GET /api/class/{id}/uuids
+        // 读取整个 uuids 字典
+        if (httpMethod === 'GET' && requestPath.includes('/api/class/') && requestPath.includes('/uuids')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+
+            const password = headers['x-password'];
+            const passwordHash = headers['x-password-hash'];
+            if (!password || !passwordHash) {
+                return handleResponse(401, { error: '需要密码验证' });
+            }
+
+            const classStore = await getStoreForClass(classId);
+            const storedHash = await classStore.get('password_hash');
+            // storedHash 存在时必须匹配；不存在（历史班级）则由 data 解密兜底
+            if (storedHash && passwordHash !== storedHash) {
+                return handleResponse(401, { error: '密码错误' });
+            }
+
+            // 用整班数据解密验证密码真伪（uuids 本身不加密）
+            const encrypted = await classStore.get('data');
+            if (encrypted) {
+                try {
+                    decryptData(encrypted, password);
+                } catch (e) {
+                    return handleResponse(401, { error: '密码错误' });
+                }
+            }
+
+            const uuids = await getUuids(classStore);
+            return handleResponse(200, {
+                class_id: classId,
+                count: Object.keys(uuids).length,
+                uuids
+            });
+        }
+
+        // POST /api/class/{id}/uuids
+        // 推送整个字典，覆盖式写入（原有条目若不在 body 里会被清掉）
+        if (httpMethod === 'POST' && requestPath.includes('/api/class/') && requestPath.includes('/uuids') &&
+            !requestPath.includes('/uuids/add')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+
+            const password = headers['x-password'];
+            const passwordHash = headers['x-password-hash'];
+            if (!password || !passwordHash) {
+                return handleResponse(401, { error: '需要密码验证' });
+            }
+
+            let payload;
+            try {
+                payload = JSON.parse(body || '{}');
+            } catch (e) {
+                return handleResponse(400, { error: '请求体不是合法 JSON' });
+            }
+
+            // 兼容两种写法：直接给字典，或包一层 { uuids: {...} }
+            const map = (payload && payload.uuids !== undefined) ? payload.uuids : payload;
+            if (!map || typeof map !== 'object' || Array.isArray(map)) {
+                return handleResponse(400, { error: '缺少 uuids（学号 -> UID 的 dict）' });
+            }
+
+            const classStore = await getStoreForClass(classId);
+            const storedHash = await classStore.get('password_hash');
+            // storedHash 存在时必须匹配；不存在（历史班级）则由 data 解密兜底
+            if (storedHash && passwordHash !== storedHash) {
+                return handleResponse(401, { error: '密码错误' });
+            }
+
+            const encrypted = await classStore.get('data');
+            if (encrypted) {
+                try {
+                    decryptData(encrypted, password);
+                } catch (e) {
+                    return handleResponse(401, { error: '密码错误' });
+                }
+            }
+
+            try {
+                const result = await saveUuids(classStore, map);
+                return handleResponse(200, {
+                    message: '已保存',
+                    class_id: classId,
+                    count: result.count,
+                    uuids: result.uuids
+                });
+            } catch (e) {
+                return handleResponse(400, { error: e.message });
+            }
+        }
+
+        // POST /api/class/{id}/uuids/add
+        // 在原有字典上追加/更新单个学号的 UID，其他条目原样保留
+        if (httpMethod === 'POST' && requestPath.includes('/api/class/') && requestPath.includes('/uuids/add')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+
+            const password = headers['x-password'];
+            const passwordHash = headers['x-password-hash'];
+            if (!password || !passwordHash) {
+                return handleResponse(401, { error: '需要密码验证' });
+            }
+
+            let payload;
+            try {
+                payload = JSON.parse(body || '{}');
+            } catch (e) {
+                return handleResponse(400, { error: '请求体不是合法 JSON' });
+            }
+
+            const studentId = payload.student_id !== undefined ? payload.student_id : payload.id;
+            const uid = payload.uid !== undefined ? payload.uid : payload.uuid;
+            if (studentId === undefined || studentId === null) {
+                return handleResponse(400, { error: '缺少 student_id' });
+            }
+            if (uid === undefined || uid === null) {
+                return handleResponse(400, { error: '缺少 uid' });
+            }
+
+            const classStore = await getStoreForClass(classId);
+            const storedHash = await classStore.get('password_hash');
+            // storedHash 存在时必须匹配；不存在（历史班级）则由 data 解密兜底
+            if (storedHash && passwordHash !== storedHash) {
+                return handleResponse(401, { error: '密码错误' });
+            }
+
+            const encrypted = await classStore.get('data');
+            if (encrypted) {
+                try {
+                    decryptData(encrypted, password);
+                } catch (e) {
+                    return handleResponse(401, { error: '密码错误' });
+                }
+            }
+
+            try {
+                const result = await addUuid(classStore, studentId, uid);
+                return handleResponse(200, {
+                    message: result.added ? '已追加' : '已更新',
+                    class_id: classId,
+                    added: result.added,
+                    count: result.count,
+                    uuids: result.uuids
+                });
+            } catch (e) {
+                return handleResponse(400, { error: e.message });
+            }
+        }
+
         // POST /api/class/{id}/homework/init
         // 初始化班级作业系统
         if (httpMethod === 'POST' && requestPath.includes('/api/class/') && requestPath.includes('/homework/init')) {
@@ -650,15 +811,29 @@ exports.handler = async (event) => {
         }
         
         // POST /api/class/{id}/homework/update
-        // 更新某个学生的作业提交
+        // 更新某个学生的作业提交（支持 student_id 学号，或 uid 卡片原生 UID）
         if (httpMethod === 'POST' && requestPath.includes('/api/class/') && requestPath.includes('/homework/update')) {
             const classIdMatch = requestPath.match(/class_\d+/);
             const classId = classIdMatch ? classIdMatch[0] : '';
             
-            const { student_id, target_date, subject_id } = JSON.parse(body);
+            let payload;
+            try {
+                payload = JSON.parse(body || '{}');
+            } catch (e) {
+                return handleResponse(400, { error: '请求体不是合法 JSON' });
+            }
             
-            if (student_id === undefined || !target_date || subject_id === undefined) {
-                return handleResponse(400, { error: '缺少必要参数: student_id, target_date, subject_id' });
+            const { student_id, target_date, subject_id } = payload;
+            // uid / uuid / card_uid 三个键名都认，方便刷卡设备直接传
+            const rawUid = payload.uid !== undefined ? payload.uid
+                : (payload.uuid !== undefined ? payload.uuid
+                : (payload.card_uid !== undefined ? payload.card_uid : undefined));
+            
+            if (student_id === undefined && rawUid === undefined) {
+                return handleResponse(400, { error: '缺少学生标识: 需要 student_id 或 uid' });
+            }
+            if (!target_date || subject_id === undefined) {
+                return handleResponse(400, { error: '缺少必要参数: target_date, subject_id' });
             }
             
             const password = headers['x-password'];
@@ -675,9 +850,32 @@ exports.handler = async (event) => {
             }
             
             try {
-                const result = await updateHomework(classStore, student_id, target_date, subject_id, password);
+                // 用 uid 认人：把 UID 反查成学号
+                let resolvedId = student_id;
+                if (student_id === undefined) {
+                    const uuids = await getUuids(classStore);
+                    const bytes = parseUid(rawUid);
+                    if (!bytes) {
+                        return handleResponse(400, { error: '缺少或非法的 uid（1~7 字节）' });
+                    }
+                    const hex = bytes.toString('hex');
+                    const matched = Object.keys(uuids).find(k => Buffer.from(uuids[k]).toString('hex') === hex);
+                    if (!matched) {
+                        return handleResponse(404, { error: '该 UID 尚未绑定学号' });
+                    }
+                    resolvedId = Number(matched);
+                } else if (!Number.isInteger(Number(student_id)) || Number(student_id) <= 0) {
+                    return handleResponse(400, { error: `无效的学生ID: ${student_id}` });
+                }
+                
+                const result = await updateHomework(classStore, Number(resolvedId), target_date, subject_id, password);
                 if (result) {
-                    return handleResponse(200, { message: '更新成功', student_id, target_date, subject_id });
+                    return handleResponse(200, {
+                        message: '更新成功',
+                        student_id: Number(resolvedId),
+                        target_date,
+                        subject_id
+                    });
                 } else {
                     return handleResponse(500, { error: '保存失败' });
                 }
