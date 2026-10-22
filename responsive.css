@@ -1,0 +1,137 @@
+/* ========================================
+   StudentOS v0.44 - 窄屏适配
+   ========================================
+   独立成文件的原因：
+   浏览器对单个样式表有解析上限，把 @media 块混在 style.css 末尾时
+   部分 WebKit 版本会整段丢弃媒体查询，导致手机上布局失效。
+   这里单独加载，保证 @media 一定生效。
+   ======================================== */
+/* ========================================
+   考试分数页
+   ======================================== */
+.exam-input {
+    padding: 10px 12px;
+    border: 1px solid #ffd1b8;
+    border-radius: 8px;
+    font-size: 1em;
+    color: #8a5a44;
+    background: #fffaf6;
+    outline: none;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.exam-input:focus {
+    border-color: #ff9f4e;
+    box-shadow: 0 0 0 3px rgba(255, 159, 78, 0.18);
+}
+
+.content-card svg text {
+    font-family: inherit;
+}
+
+/* 图表容器：手机宽度下等比缩放，过窄时允许横向滚动 */
+.exam-chart-scroll {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* 表格容器：宽表格只在自身内部横向滚动，绝不撑开页面 */
+.exam-table-scroll {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.exam-table-scroll .data-table {
+    min-width: 560px;
+}
+.exam-table-scroll .data-table th,
+.exam-table-scroll .data-table td {
+    white-space: nowrap;
+}
+
+/* ========================================
+   考试分数页内的自适应修正
+   · .content-area 是 flex 子项，默认 min-width:auto，
+     宽表格会把整个内容区顶宽（手机上前所未有地撑出横向滚动）
+   · 这里只针对考试页生效，不改动全局布局
+   ======================================== */
+.content-area:has(> .content-card .exam-table-scroll),
+.content-area:has(> .content-card .exam-chart-scroll) {
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
+}
+
+@media (max-width: 720px) {
+    .content-area:has(> .content-card) {
+        padding: 16px;
+        min-width: 0;
+    }
+    .content-area:has(> .content-card) .content-card {
+        padding: 16px;
+        overflow-x: hidden;
+    }
+}
+
+/* ========================================
+   窄屏（手机）布局：侧边栏改成顶部横向可滑动菜单
+   · 原布局 .sidebar 固定 250px + .content-area flex:1，
+     在 390px 宽的屏幕上两者相加必然溢出，导致整页横向滚动
+   · 这里只在 <=720px 生效，桌面端完全不变
+   ======================================== */
+@media (max-width: 720px) {
+    .main-content {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 8px;
+        gap: 6px;
+        border-right: none;
+        border-bottom: 1px solid #ffd1b8;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .sidebar .menu-item {
+        flex: 0 0 auto;
+        width: auto;
+        padding: 8px 14px;
+        border-radius: 20px;
+        font-size: .92em;
+        white-space: nowrap;
+        margin: 0;
+    }
+
+    .content-area {
+        width: 100%;
+        min-width: 0;
+        padding: 14px;
+        box-sizing: border-box;
+    }
+
+    .content-card {
+        padding: 16px;
+        margin-bottom: 14px;
+    }
+
+    .card-title {
+        font-size: 1.15em;
+    }
+
+    .content-area .data-table th,
+    .content-area .data-table td {
+        padding: 8px 6px;
+        font-size: .88em;
+    }
+}

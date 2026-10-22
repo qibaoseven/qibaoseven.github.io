@@ -1,5 +1,5 @@
 // ========================================
-// OpenStu v0.45
+// StudentOS v0.44
 // Author: github@qibaoseven, bilibili@七宝-Seven
 // ========================================
 window.appData = {
@@ -16,7 +16,8 @@ window.appData = {
     emoji: { emojis: '😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘' },
     dailyReport: {},
     autoEvents: [],
-    positions: { list: {}, defaultSalary: 5, lastPayDate: null }
+    positions: { list: {}, defaultSalary: 5, lastPayDate: null },
+    examScores: {}
 };
 
 function saveData(key) {
@@ -43,7 +44,8 @@ function clearLocalCache() {
         gold: {}, exchangeRate: { score_to_gold: 0.1, gold_to_score: 1, last_updated: null },
         emoji: { emojis: '😀😃😄😁😆😅😂🤣😊😇🙂🙃😉😌😍🥰😘' },
         dailyReport: {}, autoEvents: [],
-        positions: { list: {}, defaultSalary: 5, lastPayDate: null }
+        positions: { list: {}, defaultSalary: 5, lastPayDate: null },
+        examScores: {}
     };
 }
 
