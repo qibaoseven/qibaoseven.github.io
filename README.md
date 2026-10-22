@@ -1,4 +1,4 @@
-# StudentOS 班级管理系统
+# OpenStu 班级管理系统
 
 > **版本** v0.46 · **作者** github@qibaoseven · bilibili@七宝-Seven
 
@@ -193,4 +193,4 @@ cd qibaoseven.github.io
 
 ---
 
-© 2026 StudentOS · qibaoseven
+© 2026 OpenStu · qibaoseven

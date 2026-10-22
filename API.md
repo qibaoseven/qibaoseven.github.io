@@ -1,4 +1,4 @@
-# StudentOS API 使用文档
+# OpenStu API 使用文档
 
 > **版本** v0.46 · **作者** github@qibaoseven · bilibili@七宝-Seven
 > 适用于部署在 Netlify 的站点。以下示例 URL 使用占位 `https://<你的域名>`，实际请替换。
@@ -7,7 +7,7 @@
 
 ## 1. 概览
 
-StudentOS 后端提供两组接口：**班级管理**与**作业子系统**，均通过 Netlify Functions 暴露。
+OpenStu 后端提供两组接口：**班级管理**与**作业子系统**，均通过 Netlify Functions 暴露。
 
 ### 官方部署站点
 | 环境 | 站点 | API 基址 |
@@ -588,4 +588,4 @@ curl -H "X-Password: $PASS" -H "X-Password-Hash: $HASH" \
 
 ---
 
-© 2026 StudentOS · qibaoseven
+© 2026 OpenStu · qibaoseven

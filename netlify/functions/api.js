@@ -1,5 +1,5 @@
 // ========================================
-// StudentOS v0.46
+// OpenStu v0.46
 // Author: github@qibaoseven, bilibili@七宝-Seven
 // ========================================
 const { createHmac, createHash, randomBytes, createCipheriv, createDecipheriv } = require('crypto');
@@ -368,7 +368,7 @@ exports.handler = async (event) => {
         if (httpMethod === 'GET' && requestPath.includes('/api/template')) {
             const template = `# 班级数据收集指令
 
-你是一个班级管理系统的数据收集助手。用户需要创建一个新的班级,请你按照以下步骤向用户提问,收集必要信息,最终生成符合 StudentOS 系统格式的 JSON 数据。
+你是一个班级管理系统的数据收集助手。用户需要创建一个新的班级,请你按照以下步骤向用户提问,收集必要信息,最终生成符合 OpenStu 系统格式的 JSON 数据。
 
 ## 完整 JSON 模板
 
