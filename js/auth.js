@@ -206,6 +206,7 @@ function renderSidebar() {
         div.onclick = () => {
             if (item.id === 'logout') {
                 if (confirm('确定要退出系统吗？')) {
+                    if (window.nav && window.nav.close) window.nav.close();
                     window.utils.addViewLog('退出', `用户 ${window.currentUser.username} 退出`);
                     window.currentUser = null;
                     window.currentPage = 'unknown';
@@ -220,6 +221,8 @@ function renderSidebar() {
             div.classList.add('active');
             
             window.currentPage = item.page;
+            // 手机端：选完菜单项立刻收起抽屉（桌面端此调用无副作用）
+            if (window.nav && window.nav.afterSelect) window.nav.afterSelect();
             window.utils.addViewLog('切换页面', `进入 ${item.name}`);
             
             switch(item.page) {
