@@ -1,5 +1,5 @@
 // ========================================
-// StudentOS v0.44
+// StudentOS v0.46
 // Author: github@qibaoseven, bilibili@七宝-Seven
 // ========================================
 // 学生历程页面
