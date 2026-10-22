@@ -35,7 +35,8 @@ function getPagePermissionString(pageName) {
         'autoEvents': 'r--r--rwx',
         'positions': 'rw-rw-rwx',
         'homework': 'r--r-xr-x',
-        'journal': 'rwxrwxrwx'
+        'journal': 'rwxrwxrwx',
+        'exam': 'rwxr--r--'
     };
     return permissionMap[pageName] || 'rwxrwxrwx';
 }
@@ -189,6 +190,7 @@ function renderSidebar() {
         { id: 'positions', icon: '👔', name: '职位系统', permission: null, page: 'positions' },
         { id: 'homework', icon: '📚', name: '作业提交', permission: null, page: 'homework' },
         { id: 'journal', icon: '📖', name: '学生历程', permission: null, page: 'journal' },
+        { id: 'exam', icon: '📝', name: '考试分数', permission: null, page: 'exam' },
         { id: 'logout', icon: '🚪', name: '退出系统', permission: null, page: 'logout' }
     ];
     
@@ -235,6 +237,7 @@ function renderSidebar() {
                 case 'positions': if (window.positions) window.positions.showPositions(); break;
                 case 'homework': if (window.homework) window.homework.showHomework(); break;
                 case 'journal': if (window.journal) window.journal.showJournal(); break;
+                case 'exam': if (window.exam) window.exam.showExamScores(); break;
             }
         };
         sidebar.appendChild(div);
