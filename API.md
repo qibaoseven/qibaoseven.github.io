@@ -316,7 +316,9 @@ curl -H "X-Password: $PASS" -H "X-Password-Hash: $HASH" \
   "subject_id": 0            // 0=语文（按 subject_names 索引）
 }
 ```
-将该学生该学科置为 `1`（已提交）。返回 `{ message: "更新成功", ... }`。
+将该学生该学科置为 `1`（已提交）。返回 `{ message: "更新成功", student_id, target_date, subject_id, changed }`。
+
+`changed`：`true` 表示这次真的把 0 改成了 1；`false` 表示本来就已经是 1（重复刷同一张卡），设备据此避免把进度重复 +1。
 
 #### 用卡片 UID 代替学号（刷卡场景）
 
