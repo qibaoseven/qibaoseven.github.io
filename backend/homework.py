@@ -445,9 +445,13 @@ async def update_homework(class_store, student_id, target_date, subject_id, pass
     if subject_id < 0 or subject_id >= subjects:
         raise Exception(f'无效的学科ID: {subject_id}')
 
+    # changed 告诉刷卡设备这一条是不是真的从 0 变 1，
+    # 重复刷同一张卡就不会把进度重复 +1
+    was_set = homework_data[day_index][student_id][subject_id] == 1
     homework_data[day_index][student_id][subject_id] = 1
 
-    return await save_homework_data(class_store, homework_data, password)
+    saved = await save_homework_data(class_store, homework_data, password)
+    return {'saved': bool(saved), 'changed': not was_set}
 
 
 async def add_day_data(class_store, day_data, target_date=None, password=None):

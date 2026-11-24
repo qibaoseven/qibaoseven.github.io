@@ -660,9 +660,10 @@ def route_homework_update(path):
             }, 409)
 
         result = asyncio_run(update_homework(class_store, resolved_id, target_date, subject_num, password))
-        if result:
+        if result and result.get('saved'):
             return json_response({'message': '更新成功', 'student_id': resolved_id,
-                                  'target_date': target_date, 'subject_id': subject_num})
+                                  'target_date': target_date, 'subject_id': subject_num,
+                                  'changed': bool(result.get('changed'))})
         return json_response({'error': '保存失败'}, 500)
     except Exception as error:
         msg = str(error)
