@@ -409,10 +409,14 @@ async function updateHomework(classStore, studentId, targetDate, subjectId, pass
     }
     
     // 更新数据(将对应位置设为1表示已提交)
+    // changed 用来告诉刷卡设备「这条是不是真的从 0 变 1」，
+    // 重复刷同一张卡就不会把进度重复 +1。
+    const wasSet = homeworkData[dayIndex][studentId][subjectId] === 1;
     homeworkData[dayIndex][studentId][subjectId] = 1;
     
     // 保存数据
-    return await saveHomeworkData(classStore, homeworkData, password);
+    const saved = await saveHomeworkData(classStore, homeworkData, password);
+    return { saved: !!saved, changed: !wasSet };
 }
 
 /**

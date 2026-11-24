@@ -947,12 +947,13 @@ exports.handler = async (event) => {
                 }
                 
                 const result = await updateHomework(classStore, Number(resolvedId), target_date, subject_id, password);
-                if (result) {
+                if (result && result.saved) {
                     return handleResponse(200, {
                         message: '更新成功',
                         student_id: Number(resolvedId),
                         target_date,
-                        subject_id
+                        subject_id: subjectId,
+                        changed: !!result.changed      // false = 之前就已经交过了
                     });
                 } else {
                     return handleResponse(500, { error: '保存失败' });
