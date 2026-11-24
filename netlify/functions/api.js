@@ -11,7 +11,11 @@ const {
     updateHomework,
     addDayData,
     getHomeworkData,
-    getStudentHomework
+    getStudentHomework,
+    dateKey,
+    getRequiredForDate,
+    setRequiredForDate,
+    countSubmittedForDate
 } = require('./homework');
 const {
     getJournal,
@@ -652,11 +656,67 @@ exports.handler = async (event) => {
             });
         }
         
+        // GET /api/class/{id}/homework/required?date=YYYY-MM-DD
+        // 今天要交哪些科目的作业（刷卡设备开机自检用）
+        if (httpMethod === 'GET' && requestPath.includes('/api/class/') && requestPath.includes('/homework/required')) {
+            const classIdMatch = requestPath.match(/class_\d+/);
+            const classId = classIdMatch ? classIdMatch[0] : '';
+            if (!classId) {
+                return handleResponse(401, { error: 'class not right', code: 'CLASS_NOT_RIGHT' });
+            }
+
+            const url = new URL(requestPath, 'http://localhost');
+            const dateParam = url.searchParams.get('date') || '';
+            const date = /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : dateKey();
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                return handleResponse(400, { error: '无效的日期，应为 YYYY-MM-DD' });
+            }
+
+            const password = headers['x-password'];
+            const passwordHash = headers['x-password-hash'];
+            if (!password || !passwordHash) {
+                return handleResponse(401, { error: '需要密码验证' });
+            }
+
+            const classStore = await getStoreForClass(classId);
+            const storedHash = await classStore.get('password_hash');
+            const classData = await classStore.get('data');
+            if (!classData) {
+                return handleResponse(401, { error: 'class not right', code: 'CLASS_NOT_RIGHT' });
+            }
+            if (storedHash && passwordHash !== storedHash) {
+                return handleResponse(401, { error: '密码错误', code: 'BAD_PASSWORD' });
+            }
+
+            const meta = await getHomeworkMeta(classStore);
+            const required = await getRequiredForDate(classStore, date);
+
+            let submitted = 0;
+            if (required.length && meta) {
+                try {
+                    const result = await getHomeworkData(classStore, password);
+                    if (result.exists) submitted = countSubmittedForDate(result.data, date, required);
+                } catch (e) {
+                    // 数据解不开就当 0，不影响设备拿到应交科目
+                }
+            }
+
+            return handleResponse(200, {
+                class_id: classId,
+                date,
+                required,
+                subjectNames: meta ? meta.subjectNames : {},
+                studentCount: meta ? meta.studentCount : 0,
+                submitted,
+                total: (meta ? meta.studentCount : 0) * required.length
+            });
+        }
+
         // GET /api/class/{id}/homework
         // 获取班级所有作业数据
         if (httpMethod === 'GET' && requestPath.includes('/api/class/') && requestPath.includes('/homework') && 
             !requestPath.includes('/meta') && !requestPath.includes('/status') && !requestPath.includes('/student') &&
-            !requestPath.includes('/raw')) {
+            !requestPath.includes('/required') && !requestPath.includes('/raw')) {
             const classIdMatch = requestPath.match(/class_\d+/);
             const classId = classIdMatch ? classIdMatch[0] : '';
             
@@ -844,9 +904,14 @@ exports.handler = async (event) => {
             
             const classStore = await getStoreForClass(classId);
             const storedHash = await classStore.get('password_hash');
+            const classData = await classStore.get('data');
+            // 班级不存在：直接 401，别让设备以为是自己网络的问题
+            if (!classData) {
+                return handleResponse(401, { error: 'class not right', code: 'CLASS_NOT_RIGHT' });
+            }
             // storedHash 存在时必须匹配；不存在（历史班级）则由 data 解密兜底
             if (storedHash && passwordHash !== storedHash) {
-                return handleResponse(401, { error: '密码错误' });
+                return handleResponse(401, { error: '密码错误', code: 'BAD_PASSWORD' });
             }
             
             try {
@@ -861,11 +926,24 @@ exports.handler = async (event) => {
                     const hex = bytes.toString('hex');
                     const matched = Object.keys(uuids).find(k => Buffer.from(uuids[k]).toString('hex') === hex);
                     if (!matched) {
-                        return handleResponse(404, { error: '该 UID 尚未绑定学号' });
+                        return handleResponse(404, { error: '该 UID 尚未绑定学号', code: 'UID_NOT_BOUND' });
                     }
                     resolvedId = Number(matched);
                 } else if (!Number.isInteger(Number(student_id)) || Number(student_id) <= 0) {
                     return handleResponse(400, { error: `无效的学生ID: ${student_id}` });
+                }
+                
+                // 提交前先查「今天这门课要不要交」，不交就不写库（409）
+                const required = await getRequiredForDate(classStore, target_date);
+                const subjectId = Number(subject_id);
+                if (!required.length || !required.includes(subjectId)) {
+                    return handleResponse(409, {
+                        error: 'not needed to send',
+                        code: 'SUBJECT_NOT_REQUIRED',
+                        target_date: dateKey(target_date),
+                        subject_id: subjectId,
+                        required
+                    });
                 }
                 
                 const result = await updateHomework(classStore, Number(resolvedId), target_date, subject_id, password);
@@ -893,7 +971,8 @@ exports.handler = async (event) => {
             const classIdMatch = requestPath.match(/class_\d+/);
             const classId = classIdMatch ? classIdMatch[0] : '';
             
-            const { day_data, target_date } = JSON.parse(body);
+            // required_subjects: 可选。传了就覆盖当天「应交科目」清单；不传保持原状
+            const { day_data, target_date, required_subjects } = JSON.parse(body);
             
             if (!day_data || !Array.isArray(day_data)) {
                 return handleResponse(400, { error: '缺少必要参数: day_data' });
@@ -914,10 +993,15 @@ exports.handler = async (event) => {
             
             try {
                 const result = await addDayData(classStore, day_data, target_date, password);
+                let required = null;
                 if (result) {
+                    if (required_subjects !== undefined) {
+                        required = await setRequiredForDate(classStore, target_date || new Date(), required_subjects);
+                    }
                     return handleResponse(200, {
                         message: '添加成功',
-                        target_date: target_date || new Date().toISOString().split('T')[0]
+                        target_date: target_date || new Date().toISOString().split('T')[0],
+                        required: required || await getRequiredForDate(classStore, target_date || new Date())
                     });
                 } else {
                     return handleResponse(500, { error: '保存失败' });

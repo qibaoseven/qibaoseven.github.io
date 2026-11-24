@@ -543,6 +543,88 @@ async function getStudentHomework(classStore, studentId, targetDate, password = 
     return homeworkData[dayIndex][studentId];
 }
 
+// ============================================
+// 每日应交科目（required subjects）
+// --------------------------------------------
+// 原数据模型里 1 bit 只有 0/1，"没布置" 和 "没交" 都是 0，没法区分。
+// 这里单独存一份明文小 JSON：{ "YYYY-MM-DD": [subjectId, ...] }，
+// 放在班级桶的 homework_required 键上，由「布置作业」写入。
+// ============================================
+const REQUIRED_KEY = 'homework_required';
+
+// 'YYYY-MM-DD' 直接返回；Date 取其本地日期；避免 new Date('2026-11-24') 被当成 UTC
+function parseLocalDate(value) {
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        const parts = value.split('-').map(Number);
+        return new Date(parts[0], parts[1] - 1, parts[2]);
+    }
+    const d = new Date(value);
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
+function dateKey(value = new Date()) {
+    const d = parseLocalDate(value);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+async function getRequiredMap(classStore) {
+    const raw = await classStore.get(REQUIRED_KEY);
+    if (!raw) return {};
+    try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) {
+        return {};
+    }
+}
+
+async function getRequiredForDate(classStore, date) {
+    const map = await getRequiredMap(classStore);
+    const list = map[dateKey(date)];
+    return Array.isArray(list)
+        ? list.map(Number).filter(n => Number.isInteger(n) && n >= 0)
+        : [];
+}
+
+async function setRequiredForDate(classStore, date, subjects) {
+    const key = dateKey(date);
+    const map = await getRequiredMap(classStore);
+    const list = Array.isArray(subjects)
+        ? subjects.map(Number).filter(n => Number.isInteger(n) && n >= 0)
+        : [];
+
+    if (list.length) {
+        map[key] = Array.from(new Set(list)).sort((a, b) => a - b);
+    } else {
+        delete map[key];                  // 传空数组 = 当天没有要交的科目
+    }
+    await classStore.set(REQUIRED_KEY, JSON.stringify(map));
+    return map[key] || [];
+}
+
+// 统计某天「应交科目」中已提交的条数（学生 1..N，跳过 0 号哨兵）
+function countSubmittedForDate(homeworkData, date, required) {
+    const requiredList = Array.isArray(required) ? required : [];
+    if (!homeworkData || !requiredList.length) return 0;
+
+    const { dateFrom, totalDays } = getDateRange(homeworkData);
+    if (!dateFrom || !totalDays) return 0;
+
+    const dayIndex = Math.floor((parseLocalDate(date) - dateFrom) / (24 * 60 * 60 * 1000));
+    if (dayIndex < 0 || dayIndex >= totalDays) return 0;
+
+    const day = homeworkData[dayIndex] || [];
+    let count = 0;
+    for (let sid = 1; sid < day.length; ++sid) {
+        const row = day[sid] || [];
+        for (const subject of requiredList) {
+            if (row[subject] === 1) ++count;
+        }
+    }
+    return count;
+}
+
 module.exports = {
     toBitarray,
     fromBitarray,
@@ -555,5 +637,10 @@ module.exports = {
     updateHomework,
     addDayData,
     getHomeworkData,
-    getStudentHomework
+    getStudentHomework,
+    REQUIRED_KEY,
+    dateKey,
+    getRequiredForDate,
+    setRequiredForDate,
+    countSubmittedForDate
 };
