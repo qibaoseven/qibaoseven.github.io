@@ -124,7 +124,8 @@ bool getWifi() {
   bool saved = false;
 
   server.on("/", HTTP_GET, [&server]() {
-    server.send_P(200, "text/html", PAGE_HTML);
+    // 显式带 charset：中文提示才不会在某些浏览器里变成乱码
+    server.send_P(200, "text/html; charset=utf-8", PAGE_HTML);
   });
 
   server.on("/save", HTTP_POST, [&server, &done, &saved]() {
@@ -134,13 +135,22 @@ bool getWifi() {
     pwd.trim();
 
     if (ssid.length() == 0) {
-      server.send_P(200, "text/html",
+      server.send_P(200, "text/html; charset=utf-8",
         "<meta charset='utf-8'><h3>WiFi 名称不能为空</h3><a href='/'>返回</a>");
       return;                 // 不置 done，继续等用户重填
     }
 
+    // 802.11 的上限按「字节」算，不是按字数：中文一字 3 字节，20 字就 60 字节了
+    if (ssid.length() > 32 || pwd.length() > 63) {
+      server.send_P(200, "text/html; charset=utf-8",
+        "<meta charset='utf-8'><h3>名称或密码过长</h3>"
+        "<p>WiFi 名称最多 32 字节（约 10 个汉字），密码最多 63 字节。</p>"
+        "<a href='/'>返回</a>");
+      return;
+    }
+
     saved = saveWifiConfig(ssid.c_str(), pwd.c_str());
-    server.send_P(200, "text/html",
+    server.send_P(200, "text/html; charset=utf-8",
       saved
         ? "<meta charset='utf-8'><h3>保存成功，设备即将重启并连接该 WiFi。</h3>"
         : "<meta charset='utf-8'><h3>写入失败（存储异常），请重试。</h3>");
@@ -148,7 +158,7 @@ bool getWifi() {
   });
 
   server.onNotFound([&server]() {
-    server.send(200, "text/html",
+    server.send(200, "text/html; charset=utf-8",
       "<meta charset='utf-8'><a href='/'>前往配置页面</a>");
   });
 

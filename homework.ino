@@ -53,6 +53,18 @@ const int64_t SECOND = 1000;
 
 void wifiFailed();
 
+// LCD1602 是 HD44780 字库，只有 ASCII/日文片假名，没有汉字点阵。
+// 中文 SSID 直接上屏必然是乱码，这里降级成提示文本，真实名字走串口。
+static void lcdShowConnecting() {
+  bool ascii = true;
+  for (size_t i = 0; wifiSsid[i]; ++i) {
+    if ((unsigned char)wifiSsid[i] >= 0x80) { ascii = false; break; }
+  }
+  if (ascii) lcdset("Connect Wifi", wifiSsid);
+  else       lcdset("Connect Wifi", "SSID: non-ASCII");
+  Serial.printf("[wifi] connecting to \"%s\"\n", wifiSsid);
+}
+
 void setup() {
   screeninit();               // 先把屏点亮：旧版从没调用过，屏上提示全是花屏
 
@@ -85,7 +97,7 @@ void setup() {
   }
 
   // ---------- 3. 连接 WiFi ----------
-  lcdset("Connect Wifi", wifiSsid);
+  lcdShowConnecting();
   WiFi.mode(WIFI_STA);
   WiFi.persistent(false);
   WiFi.begin(wifiSsid, wifiPassword);
