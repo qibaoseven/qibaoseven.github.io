@@ -2,169 +2,365 @@
 // OpenStu v0.46 · 硬件端主固件
 // ESP8266 + RC522（或 PN532）+ LCD1602
 // ========================================
-// 本期变更：
-//   · 三个物理按键（GPIO0/2/3）全部移除，只保留读卡交互
-//   · 配网改为「开机无凭据自动开 AP」，凭据存 LittleFS，重启不丢
-//   · 连接失败不再空跑：清凭据 → 重启 → 自动回到配网
+// 交互：只有刷卡。
+//
+// 待机：第一行 HH:MM:SS（NTP 授时），第二行 已完成/总数 + 百分比
+// 刷卡：先在 07:00~08:00 窗口里判断，再看服务端返回：
+//         401 → not this class
+//         409 → not needed
+//         404 → not registered
+//         200 且 changed=true → sent!，进度 +1
+//         200 且 changed=false → already today（同一科重复刷不算数）
+// 时间：开机授时，之后每 10 分钟重授一次（RC 晶振漂移，不重同步会越走越偏）
+//
+// 配置：下面 4 个常量必须按你的班级改。HASH 用
+//     printf '密码' | sha256sum
 // ========================================
-// 芯片二选一：当前硬件是 RC522，改注释即可换回 PN532
-//     PN532：注释掉下一行
-//     RC522：保留
 #define CARD_READER_RC522
 
 #include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <time.h>
 #include "cardreader.h"
 #include "input.h"
 
-class queue {
-  unsigned head = 0, tail = 0;
-  static const unsigned short MAX_QUEUE_SIZE = 50;
-  unsigned short array[MAX_QUEUE_SIZE + 5];
-public:
-  inline bool isEmpty() const { return head == tail; }
-  inline bool isFull() const { return (tail + 1) % MAX_QUEUE_SIZE == head; }
-  inline unsigned short front() { return array[head]; }
-  bool push(const unsigned short& data) {
-    if (isFull()) return false;
-    array[tail] = data;
-    tail = (tail + 1) % MAX_QUEUE_SIZE;
-    return true;
+// ---------- 班级配置 ----------
+#define SERVER_HOST          "os-stu.netlify.app"
+#define CLASS_ID             "class_1780399937423"        // ← 你的班级 ID
+#define CLASS_PASSWORD       "706"                        // ← 班级密码
+#define CLASS_PASSWORD_HASH  "35254aa9a21444e50349cebb5465b9b42cb4a625ebcbffe24504b178c35bcb85"
+
+// ---------- 行为参数 ----------
+#define SUBMIT_HOUR_START    7           // 07:00 开始收
+#define SUBMIT_HOUR_END      8           // 08:00 之后不再收，窗口 = [07:00, 08:00)
+#define NTP_RESYNC_MS        (10UL * 60UL * 1000UL)
+#define REQUIRED_REFRESH_MS  (30UL * 60UL * 1000UL)
+#define REQUIRED_RETRY_MS    (60UL * 1000UL)
+#define STATUS_HOLD_MS       3000UL
+#define HTTP_TIMEOUT_MS      5000
+#define CARD_SUBJECT_MAX     16          // 学科数上限，超过只取前 16 科
+#define TIME_VALID_EPOCH     1600000000UL  // 2020-09 之后才算授时成功
+
+static uint8_t  requiredList[CARD_SUBJECT_MAX];
+static int      requiredCount = 0;
+static int      totalItems    = 0;        // = 学生数 × 应交科目数
+static int      doneItems     = 0;        // 已完成条数
+static uint32_t statusUntil   = 0;        // 0 = 显示时钟
+static uint32_t lastClockMs   = 0;
+static uint32_t lastNtpMs     = 0;
+static uint32_t lastFetchMs   = 0;
+
+// ========================================
+// 时间
+// ========================================
+static void ntpStart() {
+  // 东八区，无夏令时；三个服务器，单个挂了也能授上
+  configTime(8 * 3600, 0, "ntp.aliyun.com", "ntp.tencent.com", "pool.ntp.org");
+}
+
+static bool getLocalTime(struct tm* out) {
+  time_t now = time(nullptr);
+  if (now < (time_t)TIME_VALID_EPOCH) return false;
+  localtime_r(&now, out);
+  return true;
+}
+
+static bool waitForTime(uint16_t timeoutMs) {
+  uint32_t start = millis();
+  while (millis() - start < timeoutMs) {
+    if (time(nullptr) >= (time_t)TIME_VALID_EPOCH) return true;
+    delay(200);
   }
-  bool pop() {
-    if (isEmpty()) return false;
-    head = (head + 1) % MAX_QUEUE_SIZE;
-    return true;
+  return false;
+}
+
+static bool inSubmitWindow(const struct tm& t) {
+  return t.tm_hour >= SUBMIT_HOUR_START && t.tm_hour < SUBMIT_HOUR_END;
+}
+
+static void todayString(char* out, size_t cap) {
+  struct tm t;
+  if (!getLocalTime(&t)) { snprintf(out, cap, "1970-01-01"); return; }
+  strftime(out, cap, "%Y-%m-%d", &t);
+}
+
+// ========================================
+// 屏幕
+// ========================================
+static void buildProgress(char* out, size_t cap) {
+  char left[12];
+  snprintf(left, sizeof(left), "%d/%d", doneItems, totalItems);
+
+  int pct = totalItems > 0 ? (int)(((long)doneItems * 100L) / totalItems) : 0;
+  char right[8];
+  snprintf(right, sizeof(right), "%d%%", pct);
+
+  int pad = LCD_COLS - (int)strlen(left) - (int)strlen(right);
+  if (pad < 1) pad = 1;
+  snprintf(out, cap, "%s%*s%s", left, pad, "", right);
+}
+
+static void showClock() {
+  struct tm t;
+  char line1[10];
+  if (getLocalTime(&t)) strftime(line1, sizeof(line1), "%H:%M:%S", &t);
+  else                   strcpy(line1, "time sync..");
+
+  char line2[17];
+  buildProgress(line2, sizeof(line2));
+  lcdset(line1, line2);
+}
+
+static void showMessage(const char* msg) {
+  char line2[17];
+  buildProgress(line2, sizeof(line2));
+  lcdset(msg, line2);
+  statusUntil = millis() + STATUS_HOLD_MS;
+}
+
+// ========================================
+// 网络：取应交科目 / 提交一条
+// ========================================
+static bool fetchRequired() {
+  char date[11];
+  todayString(date, sizeof(date));
+
+  char url[192];
+  snprintf(url, sizeof(url),
+           "https://%s/api/class/%s/homework/required?date=%s",
+           SERVER_HOST, CLASS_ID, date);
+
+  WiFiClientSecure client;
+  client.setInsecure();                 // 没带根证书，省 RAM；校园内网够用
+  client.setBufferSizes(1024, 1024);
+
+  HTTPClient http;
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  if (!http.begin(client, url)) return false;
+  http.addHeader("X-Password", CLASS_PASSWORD);
+  http.addHeader("X-Password-Hash", CLASS_PASSWORD_HASH);
+
+  int code = http.GET();
+  if (code != 200) { http.end(); return false; }
+
+  String payload = http.getString();
+  http.end();                            // 连接立刻释放，别占着 RAM
+
+  int studentCount = 0;
+  const char* p = strstr(payload.c_str(), "\"studentCount\"");
+  if (p) { p = strchr(p, ':'); if (p) studentCount = atoi(p + 1); }
+
+  int submitted = 0;
+  p = strstr(payload.c_str(), "\"submitted\"");
+  if (p) { p = strchr(p, ':'); if (p) submitted = atoi(p + 1); }
+
+  requiredCount = 0;
+  p = strstr(payload.c_str(), "\"required\"");
+  if (p) {
+    p = strchr(p, '[');
+    if (p) {
+      ++p;
+      while (*p && *p != ']' && requiredCount < CARD_SUBJECT_MAX) {
+        while (*p == ' ' || *p == ',') ++p;
+        if (!*p || *p == ']') break;
+        int v = atoi(p);
+        if (v >= 0 && v < 255) requiredList[requiredCount++] = (uint8_t)v;
+        while (*p && *p != ',' && *p != ']') ++p;
+      }
+    }
   }
-} task;
 
-// 按键相关的 button1/button2/button3 已删除
-enum Taskname {
-  readCard,
-  screenFlush,
-  screenMainPage,
-  upload,
-  res,
-  TASK_COUNT
-};
-unsigned long long delayTime[TASK_COUNT];
+  totalItems = studentCount * requiredCount;
+  doneItems  = submitted;                // 以服务端为准：重启后不会重复计数
+  if (doneItems > totalItems) doneItems = totalItems;
 
-int64_t now = 0;
-const int64_t SECOND = 1000;
+  Serial.printf("[hw] date=%s students=%d required=%d submitted=%d total=%d\n",
+                date, studentCount, requiredCount, submitted, totalItems);
+  return true;
+}
 
-void wifiFailed();
+// 返回 HTTP 状态码；<=0 表示没连上/超时
+static int postUpdate(const uint8_t* uid, uint8_t len, uint8_t subjectId, bool* changed) {
+  char uidJson[4 * CARD_UID_MAX + 4];
+  uidToJson(uid, len, uidJson);
 
-// LCD1602 是 HD44780 字库，只有 ASCII/日文片假名，没有汉字点阵。
-// 中文 SSID 直接上屏必然是乱码，这里降级成提示文本，真实名字走串口。
-static void lcdShowConnecting() {
-  bool ascii = true;
-  for (size_t i = 0; wifiSsid[i]; ++i) {
-    if ((unsigned char)wifiSsid[i] >= 0x80) { ascii = false; break; }
+  char date[11];
+  todayString(date, sizeof(date));
+
+  char body[96];
+  snprintf(body, sizeof(body),
+           "{\"uid\":%s,\"target_date\":\"%s\",\"subject_id\":%u}",
+           uidJson, date, subjectId);
+
+  char url[160];
+  snprintf(url, sizeof(url), "https://%s/api/class/%s/homework/update", SERVER_HOST, CLASS_ID);
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setBufferSizes(1024, 1024);
+
+  HTTPClient http;
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  if (!http.begin(client, url)) return -1;
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-Password", CLASS_PASSWORD);
+  http.addHeader("X-Password-Hash", CLASS_PASSWORD_HASH);
+
+  int code = http.POST((uint8_t*)body, strlen(body));
+  *changed = false;
+
+  if (code == 200) {
+    String payload = http.getString();
+    *changed = strstr(payload.c_str(), "\"changed\":true") != nullptr;
   }
-  if (ascii) lcdset("Connect Wifi", wifiSsid);
-  else       lcdset("Connect Wifi", "SSID: non-ASCII");
-  Serial.printf("[wifi] connecting to \"%s\"\n", wifiSsid);
+  http.end();                            // 请求体/响应立刻丢掉，不驻留内存
+  return code;
+}
+
+// ========================================
+// 刷卡
+// ========================================
+static void handleCard(const uint8_t* uid, uint8_t len) {
+  struct tm t;
+  if (!getLocalTime(&t))   { showMessage("time not set"); return; }
+  if (!inSubmitWindow(t))  { showMessage("time error");   return; }
+  if (requiredCount == 0)  { showMessage("not needed");   return; }
+
+  // 逐科尝试：服务端用 changed 告诉我们这一科是不是今天第一次交
+  bool sawRejected = false;
+  for (int i = 0; i < requiredCount; ++i) {
+    bool changed = false;
+    int code = postUpdate(uid, len, requiredList[i], &changed);
+
+    if (code == 401) { showMessage("not this class"); return; }
+    if (code == 404) { showMessage("not registered"); return; }
+    if (code == 409) { sawRejected = true; continue; }   // 这科今天不用交，试下一科
+    if (code != 200) { showMessage("net error"); return; }
+
+    if (changed) {
+      if (doneItems < totalItems) ++doneItems;
+      showMessage("sent!");
+      return;
+    }
+  }
+
+  showMessage(sawRejected ? "not needed" : "already today");
+}
+
+// ========================================
+// 开机
+// ========================================
+static bool connectWifi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.persistent(false);
+  WiFi.begin(wifiSsid, wifiPassword);
+
+  uint32_t start = millis();
+  while (WiFi.status() != WL_CONNECTED) {
+    if (millis() - start >= 15UL * 1000UL) {
+      Serial.printf("[wifi] connect timeout, status=%d\n", (int)WiFi.status());
+      return false;
+    }
+    delay(30);
+  }
+  Serial.print("[wifi] ip=");
+  Serial.println(WiFi.localIP());
+  return true;
 }
 
 void setup() {
-  screeninit();               // 先把屏点亮：旧版从没调用过，屏上提示全是花屏
-
+  screeninit();
   Serial.begin(115200);
   delay(200);
   Serial.println();
-  Serial.println("=== OpenStu hardware boot ===");
+  Serial.println("=== OpenStu card reader ===");
 
-  // ---------- 1. 读卡芯片自检 ----------
+  lcdset("OpenStu boot", "");
+
+  // 1) 读卡芯片
   if (!cardBegin()) {
     lcdset("Card init failed");
     Serial.println("[card] init failed, reboot in 3s");
     delay(3000);
     ESP.restart();
   }
-  Serial.println("[card] reader ready");
 
-  // ---------- 2. WiFi 配网（无按键：没凭据就自动进 AP） ----------
+  // 2) WiFi：没凭据自动进 AP 配网
   if (!loadWifiConfig()) {
     lcdset("Config AP mode", "no wifi saved");
-    Serial.println("[wifi] no credentials, entering AP config");
     if (!getWifi()) {
       lcdset("Config failed");
-      Serial.println("[wifi] AP config failed, reboot in 3s");
       delay(3000);
       ESP.restart();
     }
     delay(500);
-    ESP.restart();            // 凭据已落盘，重启走正常连接
+    ESP.restart();
   }
 
-  // ---------- 3. 连接 WiFi ----------
-  lcdShowConnecting();
-  WiFi.mode(WIFI_STA);
-  WiFi.persistent(false);
-  WiFi.begin(wifiSsid, wifiPassword);
-
-  now = millis();
-  while (WiFi.status() != WL_CONNECTED) {     // 不再用 WL_IDLE_STATUS 判断
-    if (millis() - now >= 15 * SECOND) {
-      lcdset("WiFi time out", "back to config");
-      wifiFailed();              // 串口里留下具体原因（SSID 不存在/密码错/掉线）
-      Serial.println("[wifi] connect timeout, clearing credentials");
-      delay(2000);
-      clearWifiConfig();        // 坏凭据作废，重启后自动回配网
-      ESP.restart();
-    }
-    delay(30);
+  if (!connectWifi()) {
+    lcdset("WiFi time out", "back to config");
+    delay(2000);
+    clearWifiConfig();
+    ESP.restart();
   }
 
-  String ip = WiFi.localIP().toString();
-  Serial.print("[wifi] connected, ip=");
-  Serial.println(ip);
-  lcdset("Reader ready", ip.c_str());
+  // 3) NTP 授时
+  lcdset("Time sync", "");
+  ntpStart();
+  if (!waitForTime(20000)) {
+    Serial.println("[ntp] sync timeout, will retry in loop");
+  }
 
-  task.push(readCard);
-  delayTime[readCard] = millis() + 100;
+  // 4) 拉今天要交哪些科目
+  lcdset("Loading homework", "");
+  if (!fetchRequired()) {
+    lcdset("No homework data", "retry later");
+  } else if (requiredCount == 0) {
+    lcdset("No homework today", "");
+  } else {
+    showClock();
+  }
+
+  lastNtpMs   = millis();
+  lastFetchMs = millis();
+  lastClockMs = 0;
+  statusUntil = 0;
 }
 
 void loop() {
-  now = millis();
+  uint32_t now = millis();
 
-  switch (task.front()) {
-    case res:
-      ESP.restart();
-      break;
-
-    case readCard: {
-      if (now < delayTime[readCard]) break;
-
-      uint8_t uid[CARD_UID_MAX];
-      uint8_t len = 0;
-
-      // 同一张卡 3 秒内只上报一次
-      if (cardReadNew(uid, len, 3000)) {
-        char hex[3 * CARD_UID_MAX + 1];
-        uidToHex(uid, len, hex);
-        Serial.printf("[card] uid=%s\n", hex);
-        lcdset("Card read", hex);
-        // TODO: 接 POST /api/class/{id}/homework/update，body 用 uidToJson()
-      }
-
-      delayTime[readCard] = millis() + 120;
-      break;
-    }
-
-    default:
-      delay(10);
-      break;
+  // 定期重授时：RC 晶振会漂，必须持续校
+  if (now - lastNtpMs >= NTP_RESYNC_MS) {
+    lastNtpMs = now;
+    ntpStart();
   }
-}
 
-// 只在串口打印诊断信息，不再写屏（屏上信息由 setup/loop 决定）
-void wifiFailed() {
-  switch (WiFi.status()) {
-    case WL_NO_SSID_AVAIL:      Serial.println("[wifi] SSID not found");  break;
-    case WL_CONNECT_FAILED:     Serial.println("[wifi] connect failed");  break;
-    case WL_WRONG_PASSWORD:     Serial.println("[wifi] wrong password");  break;
-    case WL_CONNECTION_LOST:    Serial.println("[wifi] connection lost"); break;
-    case WL_CONNECTED:          return;
-    default:                    Serial.println("[wifi] failed");          break;
+  // 定期刷新「今天要交哪些科目」；没数据就 1 分钟重试
+  uint32_t refresh = (totalItems > 0) ? REQUIRED_REFRESH_MS : REQUIRED_RETRY_MS;
+  if (now - lastFetchMs >= refresh) {
+    lastFetchMs = now;
+    if (WiFi.status() == WL_CONNECTED) fetchRequired();
   }
+
+  // 状态消息到期回时钟
+  if (statusUntil && (int32_t)(now - statusUntil) >= 0) statusUntil = 0;
+  if (!statusUntil && (now - lastClockMs >= 1000UL)) {
+    lastClockMs = now;
+    showClock();
+  }
+
+  // 刷卡
+  uint8_t uid[CARD_UID_MAX];
+  uint8_t len = 0;
+  if (cardReadNew(uid, len, 3000)) {
+    char hex[3 * CARD_UID_MAX + 1];
+    uidToHex(uid, len, hex);
+    Serial.printf("[card] uid=%s\n", hex);
+    handleCard(uid, len);
+    lastClockMs = now;
+  }
+
+  delay(10);
 }

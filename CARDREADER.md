@@ -63,13 +63,48 @@ ESP8266 + 读卡芯片 + LCD1602。本版把三个物理按键全部删掉，只
 - SSID 为空会被拒绝，提示重填
 - AP 名/密码/超时都在 `input.h` 顶部 `#define`，密码少于 8 位会自动降级成开放热点（`""` 即开放）
 
-## 还没接完的部分
+## 固件行为（v0.46-hw3）
 
-`loop()` 里 `readCard` 读到 UID 后目前只打印 + 上屏，`upload` 任务还是空的。下一步是：
+开机：屏亮 → 读卡自检 → 读 WiFi 凭据（没有就 AP 配网）→ 连 WiFi → NTP 授时 → 拉「今天要交哪些科目」。
+
+待机：第一行 `HH:MM:SS`，第二行 `已完成/总数` + 右对齐百分比（`3/12    25%`）。
+
+刷卡流程：
+
+1. 时间无效 → `time not set`，不发请求
+2. 不在 `07:00~08:00` → `time error`，不发请求
+3. 逐科 POST `/homework/update`，按状态码分流：
+
+| 状态 | 屏幕 |
+|---|---|
+| 401 | `not this class` |
+| 404（UID 未绑定） | `not registered` |
+| 409（今天不用交这科） | 试下一科，全都这样显示 `not needed` |
+| 200 且 `changed:true` | `sent!`，进度 +1 |
+| 200 且 `changed:false`（重复刷） | 试下一科，全交完显示 `already today` |
+| 连不上/超时 | `net error` |
+
+多学科：一次刷卡提交一科，同一天再刷一次会把剩下没交的科目补上；服务端用 `changed` 保证不会重复计数。
+
+时间：开机授时一次，之后**每 10 分钟重授一次**（RC 晶振漂移，不重同步会越走越偏）；`configTime(8*3600, 0, ...)` 东八区，无夏令时。
+
+进度分母：`studentCount × required.length`，来自 `GET /api/class/{id}/homework/required`；开机时 `doneItems` 取服务端的 `submitted`，所以重启不会把已完成的清零。
+
+需要改的配置（`homework.ino` 顶部）：
 
 ```cpp
-POST /api/class/{id}/homework/update
-{"uid":[18,52,86,120,154,188,222],"target_date":"2026-08-29","subject_id":0}
+#define SERVER_HOST          "os-stu.netlify.app"
+#define CLASS_ID             "class_1780399937423"
+#define CLASS_PASSWORD       "706"
+#define CLASS_PASSWORD_HASH  "sha256(密码)的十六进制"
 ```
 
-`uidToJson(uid, len, buf)` 已经准备好了，直接拼进请求体即可；服务端会拿 uid 反查学号，返回真实 `student_id`。UID 未绑定则返回 404，需要先 `POST /uuids/add`。
+## 依赖的后端接口
+
+| 接口 | 用途 |
+|---|---|
+| `GET /api/class/{id}/homework/required?date=` | 开机取应交科目、人数、已交条数 |
+| `POST /api/class/{id}/homework/update` | 刷卡提交，返回 `changed` 区分首次/重复 |
+
+对应的服务端改动在 `master` 的 `netlify/functions/*` 与 `python/v0.46` 的 `backend/*` 两个分支上，均已实现。
+
