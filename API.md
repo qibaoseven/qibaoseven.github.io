@@ -311,9 +311,9 @@ curl -H "X-Password: $PASS" -H "X-Password-Hash: $HASH" \
 **请求体**
 ```jsonc
 {
-  "student_id": 23,
+  "student_id": 23,          // 学号，与 uid 二选一
   "target_date": "2026-08-28",
-  "subject_id": 0      // 0=语文（按 subject_names 索引）
+  "subject_id": 0            // 0=语文（按 subject_names 索引）
 }
 ```
 将该学生该学科置为 `1`（已提交）。返回 `{ message: "更新成功", ... }`。
@@ -338,6 +338,10 @@ curl -H "X-Password: $PASS" -H "X-Password-Hash: $HASH" \
 | `uid` 不在 3.10 的字典里 | `404` 该 UID 尚未绑定学号（先调用 `/uuids/add` 绑定） |
 | `uid` 不是 1~7 字节 | `400` |
 | 两个都传 | 以 `student_id` 为准 |
+| 班级 ID 不存在 | `401` `{ "error": "class not right", "code": "CLASS_NOT_RIGHT" }` |
+| 该科目当天不在应交清单里 | `409` `{ "error": "not needed to send", "code": "SUBJECT_NOT_REQUIRED", "required": [...] }` |
+
+> 提交前会先校验：①班级存在且密码正确；②`target_date` 当天 `subject_id` 在 3.11 的应交清单里。任一条不满足都不会写库。
 
 ### 3.8 布置某天作业（覆盖整日）
 `POST /api/class/{id}/homework/day`
@@ -356,10 +360,13 @@ curl -H "X-Password: $PASS" -H "X-Password-Hash: $HASH" \
     [1,1],   // 学生1：语文数学都交了
     [0,0],   // 学生2：未交
     ...      // 共 student_count+1 个元素
-  ]
+  ],
+  "required_subjects": [0, 1]   // 可选：该天应交科目，传了就覆盖当天清单
 }
 ```
 会将指定日期替换为传入的整日数据。若目标日期超出已有范围会自动扩展补零。
+
+`required_subjects` 是「这一天到底要交哪几科」的唯一来源：网页端点「布置作业」时写入，`/homework/update` 据此拒绝不该交的科目。不传就保持原有清单不变，传 `[]` 表示当天没有要交的科目。
 
 ### 3.9 删除作业数据
 `DELETE /api/class/{id}/homework`
@@ -438,6 +445,40 @@ curl -X POST "$BASE/api/class/$CLASS/uuids/add" \
 | 密码或哈希错误 | `401` |
 
 **要点**：一个 UID 只能绑一个学号，避免刷卡时身份歧义；同一个学号重复写入则视为改绑。
+
+### 3.11 今日应交科目（刷卡设备自检用）
+`GET /api/class/{id}/homework/required?date=YYYY-MM-DD`
+
+| 参数 | 位置 | 说明 |
+|---|---|---|
+| `date` | 查询参数 | 可选，默认今天。格式必须是 `YYYY-MM-DD` |
+
+| 头 | 说明 |
+|----|------|
+| `X-Password` / `X-Password-Hash` | 班级密码 |
+
+返回：
+```json
+{
+  "class_id": "class_1780399937423",
+  "date": "2026-11-24",
+  "required": [0, 1],
+  "subjectNames": { "0": "语文", "1": "数学" },
+  "studentCount": 51,
+  "submitted": 37,
+  "total": 102
+}
+```
+
+- `required`：当天应交科目的索引数组，来自 3.8 的 `required_subjects`；没布置过就是 `[]`
+- `submitted`：当天这些科目里已置 1 的条数（学生 1..N，跳过 0 号哨兵）
+- `total` = `studentCount × required.length`，设备可直接拿它当进度条分母
+
+| 状态码 | 含义 |
+|---|---|
+| 200 | 成功（`required` 为空也返回 200） |
+| 400 | `date` 格式不对 |
+| 401 | 缺密码 / 哈希不匹配 / 班级不存在（`class not right`） |
 
 ---
 

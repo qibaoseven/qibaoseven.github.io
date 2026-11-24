@@ -710,7 +710,7 @@ async function showManage() {
     </div>`;
 }
 
-// 布置作业：把当天所有学生该学科标记为 0 (未提交)
+// 布置作业：登记当天应交科目，并把该学科所有人的提交位清 0
 async function submitArrange() {
     const dateEl = document.getElementById('hwArrangeDate');
     const subjEl = document.getElementById('hwArrangeSubjects');
@@ -723,25 +723,41 @@ async function submitArrange() {
     const subjectCount = meta.subjectCount || 1;
     const date = dateEl.value;
 
-    // 构建当日数据: 当前已有数据的基础上,把指定学科设为未提交(0)
-    // 后端 /day 以覆盖整日方式写入,因此需先拉取当天,再把目标学科置0
-    let current = null;
+    // 后端 /day 是「整日覆盖」写库，所以必须先拿到当天所有人的真实数据。
+    // 旧实现只取 1 号学生那一行再复制给全班，会把别人已交的记录刷掉 —— 已修。
+    let dayRows = null;
     try {
-        const cur = await hwGet(`/student/1?date=${date}`);
-        if (cur.ok) { const j = await cur.json(); if (j && j.homework) current = j.homework; }
-    } catch (e) {}
-
-    const dayData = [];
-    for (let i = 0; i <= stuCount; i++) { // 0..stuCount 含机器人
-        const arr = current && Array.isArray(current) ? current.slice() : new Array(subjectCount).fill(0);
-        subjectKeys.forEach(k => { arr[+k] = 0; });
-        dayData.push(arr);
+        const full = await hwLoadAll();
+        if (full && full.exists && Array.isArray(full.data) && full.dateFrom) {
+            const from = parseDateStr(full.dateFrom);
+            const target = parseDateStr(date);
+            const idx = Math.round((target - from) / 86400000);
+            if (idx >= 0 && idx < full.data.length) dayRows = full.data[idx];
+        }
+    } catch (e) {
+        // 拉不到就退化成全 0，至少不会污染别人
     }
 
-    const r = await hwPost('/day', { target_date: date, day_data: dayData });
+    const dayData = [];
+    for (let i = 0; i <= stuCount; i++) { // 0..stuCount 含机器人哨兵
+        let row;
+        if (dayRows && Array.isArray(dayRows[i])) row = dayRows[i].slice();
+        else row = new Array(subjectCount).fill(0);
+
+        while (row.length < subjectCount) row.push(0);
+        subjectKeys.forEach(k => { row[+k] = 0; });   // 布置 = 记为未提交
+        dayData.push(row);
+    }
+
+    // required_subjects 让后端记住「这一天到底要交哪几科」，刷卡提交时据此校验
+    const r = await hwPost('/day', {
+        target_date: date,
+        day_data: dayData,
+        required_subjects: subjectKeys.map(Number)
+    });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || '布置失败');
-    alert('✅ 已布置 ' + date + ' 的作业');
+    alert('✅ 已布置 ' + date + ' 的作业（' + subjectKeys.length + ' 科）');
     window.homework.showHomework();
 }
 

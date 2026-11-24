@@ -531,3 +531,92 @@ async def get_student_homework(class_store, student_id, target_date, password=No
         return None
 
     return homework_data[day_index][student_id]
+
+
+# ========================================
+# 每日应交科目（required subjects）
+# ----------------------------------------
+# 位图里 0 既可能是「没布置」也可能是「没交」，无法区分。
+# 单独存一份明文小 JSON：{ "YYYY-MM-DD": [subjectId, ...] }，
+# 放在班级桶的 homework_required 键上，由「布置作业」写入。
+# ========================================
+REQUIRED_KEY = 'homework_required'
+
+
+def _required_date_key(value=None):
+    if value is None:
+        return _iso_date(_today_start())
+    if isinstance(value, str) and len(value) >= 10:
+        return _iso_date(_parse_date(value))
+    return _iso_date(value if isinstance(value, datetime.datetime) else _parse_date(value))
+
+
+async def get_required_map(class_store):
+    raw = await class_store.get(REQUIRED_KEY)
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
+
+
+async def get_required_for_date(class_store, date=None):
+    mapping = await get_required_map(class_store)
+    value = mapping.get(_required_date_key(date))
+    if not isinstance(value, list):
+        return []
+    out = []
+    for item in value:
+        try:
+            num = int(item)
+        except (TypeError, ValueError):
+            continue
+        if num >= 0:
+            out.append(num)
+    return out
+
+
+async def set_required_for_date(class_store, date, subjects):
+    key = _required_date_key(date)
+    mapping = await get_required_map(class_store)
+
+    items = []
+    if isinstance(subjects, list):
+        for item in subjects:
+            try:
+                num = int(item)
+            except (TypeError, ValueError):
+                continue
+            if num >= 0 and num not in items:
+                items.append(num)
+
+    if items:
+        mapping[key] = sorted(items)
+    else:
+        mapping.pop(key, None)          # 空数组 = 当天没有要交的科目
+
+    await class_store.set(REQUIRED_KEY, json.dumps(mapping, ensure_ascii=False))
+    return mapping.get(key, [])
+
+
+def count_submitted_for_date(homework_data, date, required):
+    """统计某天应交科目里已提交的条数（学生 1..N，跳过 0 号哨兵）"""
+    if not homework_data or not required:
+        return 0
+
+    total_days = len(homework_data)
+    date_from = _add_days(_today_start(), -(total_days - 1))
+    day_index = (_parse_date(date) - date_from).days
+    if day_index < 0 or day_index >= total_days:
+        return 0
+
+    day = homework_data[day_index] or []
+    count = 0
+    for sid in range(1, len(day)):
+        row = day[sid] or []
+        for subject in required:
+            if subject < len(row) and row[subject] == 1:
+                count += 1
+    return count

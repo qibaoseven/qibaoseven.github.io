@@ -37,6 +37,9 @@ from homework import (
     get_homework_data,
     get_student_homework,
     get_date_range,
+    get_required_for_date,
+    set_required_for_date,
+    count_submitted_for_date,
 )
 from journal import (
     get_journal,
@@ -417,6 +420,59 @@ def route_homework_status(path):
     })
 
 
+def route_homework_required(path):
+    """GET /api/class/{id}/homework/required?date=YYYY-MM-DD —— 刷卡设备开机自检用"""
+    class_id = get_class_id(path)
+    if not class_id:
+        return json_response({'error': 'class not right', 'code': 'CLASS_NOT_RIGHT'}, 401)
+
+    date_param = (request.args.get('date') or '').strip()
+    if date_param:
+        try:
+            datetime.strptime(date_param, '%Y-%m-%d')
+        except ValueError:
+            return json_response({'error': '无效的日期，应为 YYYY-MM-DD'}, 400)
+        date = date_param
+    else:
+        date = datetime.now().strftime('%Y-%m-%d')
+
+    password = request.headers.get('X-Password')
+    password_hash = request.headers.get('X-Password-Hash')
+    if not password or not password_hash:
+        return json_response({'error': '需要密码验证'}, 401)
+
+    class_store = get_store_for_class(class_id)
+    class_data = asyncio_run(class_store.get('data'))
+    if not class_data:
+        return json_response({'error': 'class not right', 'code': 'CLASS_NOT_RIGHT'}, 401)
+
+    stored_hash = asyncio_run(class_store.get('password_hash'))
+    if stored_hash and password_hash != stored_hash:
+        return json_response({'error': '密码错误', 'code': 'BAD_PASSWORD'}, 401)
+
+    meta = asyncio_run(get_homework_meta(class_store))
+    required = asyncio_run(get_required_for_date(class_store, date))
+
+    submitted = 0
+    if required and meta:
+        try:
+            result = asyncio_run(get_homework_data(class_store, password))
+            if result['exists']:
+                submitted = count_submitted_for_date(result['data'], date, required)
+        except Exception:
+            submitted = 0        # 解不开就当 0，别挡设备拿清单
+
+    return json_response({
+        'class_id': class_id,
+        'date': date,
+        'required': required,
+        'subjectNames': (meta or {}).get('subjectNames', {}),
+        'studentCount': (meta or {}).get('studentCount', 0),
+        'submitted': submitted,
+        'total': (meta or {}).get('studentCount', 0) * len(required),
+    })
+
+
 def route_homework_get(path):
     class_id = get_class_id(path)
     password = request.headers.get('X-Password')
@@ -564,9 +620,14 @@ def route_homework_update(path):
         return json_response({'error': '需要密码验证'}, 401)
 
     class_store = get_store_for_class(class_id)
+    class_data = asyncio_run(class_store.get('data'))
+    # 班级不存在：401，让设备知道不是自己的网络问题
+    if not class_data:
+        return json_response({'error': 'class not right', 'code': 'CLASS_NOT_RIGHT'}, 401)
+
     stored_hash = asyncio_run(class_store.get('password_hash'))
     if stored_hash and password_hash != stored_hash:
-        return json_response({'error': '密码错误'}, 401)
+        return json_response({'error': '密码错误', 'code': 'BAD_PASSWORD'}, 401)
 
     try:
         # 用 uid 认人：把 UID 反查成学号
@@ -576,17 +637,32 @@ def route_homework_update(path):
             uuids_map = asyncio_run(get_uuids(class_store))
             resolved = find_student_by_uid(uuids_map, raw_uid)
             if resolved is None:
-                return json_response({'error': '该 UID 尚未绑定学号'}, 404)
+                return json_response({'error': '该 UID 尚未绑定学号', 'code': 'UID_NOT_BOUND'}, 404)
             resolved_id = resolved
         else:
             resolved_id = normalize_uuid_student_id(student_id)
             if resolved_id is None or resolved_id <= 0:
                 return json_response({'error': f'无效的学生ID: {student_id}'}, 400)
 
-        result = asyncio_run(update_homework(class_store, resolved_id, target_date, subject_id, password))
+        # 提交前先查「今天这门课要不要交」，不交就不写库（409）
+        required = asyncio_run(get_required_for_date(class_store, target_date))
+        try:
+            subject_num = int(subject_id)
+        except (TypeError, ValueError):
+            return json_response({'error': f'无效的学科ID: {subject_id}'}, 400)
+        if (not required) or (subject_num not in required):
+            return json_response({
+                'error': 'not needed to send',
+                'code': 'SUBJECT_NOT_REQUIRED',
+                'target_date': target_date,
+                'subject_id': subject_num,
+                'required': required,
+            }, 409)
+
+        result = asyncio_run(update_homework(class_store, resolved_id, target_date, subject_num, password))
         if result:
             return json_response({'message': '更新成功', 'student_id': resolved_id,
-                                  'target_date': target_date, 'subject_id': subject_id})
+                                  'target_date': target_date, 'subject_id': subject_num})
         return json_response({'error': '保存失败'}, 500)
     except Exception as error:
         msg = str(error)
@@ -600,6 +676,7 @@ def route_homework_day(path):
     payload = body_json()
     day_data = payload.get('day_data')
     target_date = payload.get('target_date')
+    required_subjects = payload.get('required_subjects')   # 可选：传了就覆盖当天应交清单
 
     if not day_data or not isinstance(day_data, list):
         return json_response({'error': '缺少必要参数: day_data'}, 400)
@@ -617,9 +694,15 @@ def route_homework_day(path):
     try:
         result = asyncio_run(add_day_data(class_store, day_data, target_date, password))
         if result:
+            date_str = target_date or datetime.now().strftime('%Y-%m-%d')
+            if required_subjects is not None:
+                required = asyncio_run(set_required_for_date(class_store, date_str, required_subjects))
+            else:
+                required = asyncio_run(get_required_for_date(class_store, date_str))
             return json_response({
                 'message': '添加成功',
-                'target_date': target_date or datetime.now().strftime('%Y-%m-%d'),
+                'target_date': date_str,
+                'required': required,
             })
         return json_response({'error': '保存失败'}, 500)
     except Exception as error:
@@ -884,8 +967,11 @@ def dispatch(path):
         if method == 'GET' and '/api/class/' in path and '/homework/status' in path:
             return route_homework_status(path)
 
+        if method == 'GET' and '/api/class/' in path and '/homework/required' in path:
+            return route_homework_required(path)
+
         if (method == 'GET' and '/api/class/' in path and '/homework' in path
-                and '/meta' not in path and '/status' not in path
+                and '/meta' not in path and '/status' not in path and '/required' not in path
                 and '/student' not in path and '/raw' not in path):
             return route_homework_get(path)
 
