@@ -101,9 +101,9 @@ static void buildProgress(char* out, size_t cap) {
 
 static void showClock() {
   struct tm t;
-  char line1[10];
+  char line1[16];
   if (readLocalTime(&t)) strftime(line1, sizeof(line1), "%H:%M:%S", &t);
-  else                   strcpy(line1, "time sync..");
+  else                   snprintf(line1, sizeof(line1), "time sync..");
 
   char line2[17];
   buildProgress(line2, sizeof(line2));
@@ -181,6 +181,15 @@ static int fetchRequired() {
   return 0;
 }
 
+// 取 JSON 里某个布尔字段，容忍空格：{"changed": true} / {"changed":true}
+static bool jsonBoolField(const char* payload, const char* key) {
+  const char* p = strstr(payload, key);
+  if (!p) return false;
+  p += strlen(key);
+  while (*p == ':' || *p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') ++p;
+  return *p == 't' || *p == 'T' || *p == '1';
+}
+
 // 返回 HTTP 状态码；<=0 表示没连上/超时
 static int postUpdate(const uint8_t* uid, uint8_t len, uint8_t subjectId, bool* changed) {
   char uidJson[4 * CARD_UID_MAX + 4];
@@ -213,7 +222,7 @@ static int postUpdate(const uint8_t* uid, uint8_t len, uint8_t subjectId, bool* 
 
   if (code == 200) {
     String payload = http.getString();
-    *changed = strstr(payload.c_str(), "\"changed\":true") != nullptr;
+    *changed = jsonBoolField(payload.c_str(), "\"changed\"");
   }
   http.end();                            // 请求体/响应立刻丢掉，不驻留内存
   return code;

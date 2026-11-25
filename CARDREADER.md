@@ -138,6 +138,24 @@ arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 homework   # 目录名需�
 
 注意两点：`homework.ino` 里的本地取时函数必须叫 `readLocalTime`（原名 `getLocalTime` 会和 ESP8266 core 的 `getLocalTime(tm*, ms)` 二义性冲突）；`LiquidCrystal I2C` 库标注只支持 AVR，编译有 architecture 提示但不影响 ESP8266 使用。
 
+## 本地联调（真后端，已实测通过）
+
+固件已在主机侧用桩件接**本地 python/v0.46 Flask** 跑过端到端（不是只看编译）：
+
+| 场景 | 结果 |
+|---|---|
+| 无配置开机 → AP 配网（未保存就刷卡） | `Card seen / save first`，热点不断 |
+| 保存 → 刷卡确认 | `Config locked` → 重启 → 连 WiFi |
+| 开机拉 required | `30 人 × 2 科 = 60`，`0/60 0%` |
+| 1 号刷卡 | `POST update → 200 changed:true` → `sent!` `1/60 1%` |
+| 服务端改成只交数学，2 号刷卡 | 科0 `409` → 科1 `200 changed:true` → `sent!` `2/60 3%` |
+| 3 号刷卡 | `sent!` `3/60 5%`；服务端 `submitted` 也为 3，库里三人记录正确 |
+| 未绑定卡 | `404 UID_NOT_BOUND` → `not registered` |
+| 08:10 刷卡 | `time error`，服务端日志无请求 |
+| 班级密码填错 → 401 | `Class config bad` → 清班级配置 → 回配网重填 706 → 正常 `sent!` |
+
+仿真器在 `firmware-sim/`，跑真后端的命令写在它的 README 里。
+
 ## 依赖的后端接口
 
 | 接口 | 用途 |
