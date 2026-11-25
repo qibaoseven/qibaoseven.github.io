@@ -1,0 +1,20 @@
+[package]
+name = "openstu"
+version = "0.46.0"
+edition = "2021"
+description = "OpenStu v0.46 · 班级积分/作业系统后端（Rust 单文件版）"
+
+[dependencies]
+aes-gcm = "0.10"
+base64 = "0.22"
+hmac = "0.12"
+sha2 = "0.10"
+serde_json = { version = "1", features = ["preserve_order"] }
+chrono = "0.4"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
