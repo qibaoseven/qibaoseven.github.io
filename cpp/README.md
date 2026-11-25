@@ -36,6 +36,15 @@ cd cpp && make
 ./openstu
 ```
 
+Linux 静态单文件（glibc 静态链接，拷到任何 x86_64 发行版都能直接跑）：
+
+```bash
+cd cpp && make linux-static
+# 产物：cpp/openstu-linux，约 3 MB，file 显示 statically linked
+```
+
+启动后默认会自动调 `xdg-open` 打开浏览器（没有桌面环境时会静默失败，不影响服务）。
+
 Windows 单文件 exe（在 Linux 上用 mingw-w64 交叉编译，或 WSL 里同样命令）：
 
 ```bash
