@@ -57,7 +57,7 @@ static void ntpStart() {
   configTime(8 * 3600, 0, "ntp.aliyun.com", "ntp.tencent.com", "pool.ntp.org");
 }
 
-static bool getLocalTime(struct tm* out) {
+static bool readLocalTime(struct tm* out) {
   time_t now = time(nullptr);
   if (now < (time_t)TIME_VALID_EPOCH) return false;
   localtime_r(&now, out);
@@ -79,7 +79,7 @@ static bool inSubmitWindow(const struct tm& t) {
 
 static void todayString(char* out, size_t cap) {
   struct tm t;
-  if (!getLocalTime(&t)) { snprintf(out, cap, "1970-01-01"); return; }
+  if (!readLocalTime(&t)) { snprintf(out, cap, "1970-01-01"); return; }
   strftime(out, cap, "%Y-%m-%d", &t);
 }
 
@@ -102,7 +102,7 @@ static void buildProgress(char* out, size_t cap) {
 static void showClock() {
   struct tm t;
   char line1[10];
-  if (getLocalTime(&t)) strftime(line1, sizeof(line1), "%H:%M:%S", &t);
+  if (readLocalTime(&t)) strftime(line1, sizeof(line1), "%H:%M:%S", &t);
   else                   strcpy(line1, "time sync..");
 
   char line2[17];
@@ -224,7 +224,7 @@ static int postUpdate(const uint8_t* uid, uint8_t len, uint8_t subjectId, bool* 
 // ========================================
 static void handleCard(const uint8_t* uid, uint8_t len) {
   struct tm t;
-  if (!getLocalTime(&t))   { showMessage("time not set"); return; }
+  if (!readLocalTime(&t))   { showMessage("time not set"); return; }
   if (!inSubmitWindow(t))  { showMessage("time error");   return; }
   if (requiredCount == 0)  { showMessage("not needed");   return; }
 

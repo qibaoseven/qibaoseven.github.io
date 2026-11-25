@@ -117,6 +117,27 @@ ESP8266 + 读卡芯片 + LCD1602。本版把三个物理按键全部删掉，只
 
 开机连上后会先拉一次 `required`：如果返回 **401**，说明班级 ID 或密码不对，设备会清掉班级配置（保留 WiFi）、重启回配网页重填，屏幕提示 `Class config bad`。
 
+## 编译（已实测通过）
+
+已在 `arduino-cli 1.6.0` + `esp8266:esp8266@3.1.2` 上编译通过（RC522 与 PN532 两个变体都过，零编译警告）：
+
+```bash
+arduino-cli core install esp8266:esp8266 \
+  --additional-urls https://arduino.esp8266.com/stable/package_esp8266com_index.json
+arduino-cli lib install "MFRC522" "Adafruit PN532" "LiquidCrystal I2C"
+arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 homework   # 目录名需为 homework
+```
+
+占用（`nodemcuv2`，1MB flash / 80KB RAM）：
+
+| 项 | 用量 |
+|---|---|
+| RAM（全局） | 33412 / 80192 字节（41%） |
+| IRAM | 28755 / 65536（93%，含 32KB cache 预留，属正常） |
+| Flash 代码 | 430856 / 1048576（41%），bin 约 470KB |
+
+注意两点：`homework.ino` 里的本地取时函数必须叫 `readLocalTime`（原名 `getLocalTime` 会和 ESP8266 core 的 `getLocalTime(tm*, ms)` 二义性冲突）；`LiquidCrystal I2C` 库标注只支持 AVR，编译有 architecture 提示但不影响 ESP8266 使用。
+
 ## 依赖的后端接口
 
 | 接口 | 用途 |
