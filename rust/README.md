@@ -39,6 +39,16 @@ cargo build --release
 ./target/release/openstu
 ```
 
+Linux 静态单文件（musl，不依赖目标机器的 glibc，任何 x86_64 发行版都能跑）：
+
+```bash
+sudo apt-get install musl-tools
+cd rust && ./build.sh linux-musl
+# 产物：rust/openstu-linux，约 1.2 MB，静态 PIE
+```
+
+启动后默认自动调 `xdg-open` 打开浏览器（纯命令行环境会静默失败，服务照常）。
+
 Windows 单文件 exe（Linux 上交叉编译，需要 mingw-w64）：
 
 ```bash
