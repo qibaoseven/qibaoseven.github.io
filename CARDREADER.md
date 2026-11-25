@@ -90,14 +90,28 @@ ESP8266 + 读卡芯片 + LCD1602。本版把三个物理按键全部删掉，只
 
 进度分母：`studentCount × required.length`，来自 `GET /api/class/{id}/homework/required`；开机时 `doneItems` 取服务端的 `submitted`，所以重启不会把已完成的清零。
 
-需要改的配置（`homework.ino` 顶部）：
+需要改的配置：只剩服务器地址（`homework.ino` 顶部）
 
 ```cpp
-#define SERVER_HOST          "os-stu.netlify.app"
-#define CLASS_ID             "class_1780399937423"
-#define CLASS_PASSWORD       "706"
-#define CLASS_PASSWORD_HASH  "sha256(密码)的十六进制"
+#define SERVER_HOST  "os-stu.netlify.app"
 ```
+
+班级 ID、班级密码**不再写死在源码里**，改到配网页里填（见下一节）。
+
+## 配网页（WiFi + 班级，一次填完）
+
+开机时只要 **WiFi 凭据或班级配置任一缺失**，就自动开热点 `OpenStu-Config`（密码 `openstu1234`），手机连上访问 `http://192.168.4.1/`，一页填四项：
+
+| 字段 | 说明 |
+|---|---|
+| WiFi 名称 | 必填，最多 32 字节（约 10 个汉字） |
+| WiFi 密码 | 留空 = 沿用已保存的值 |
+| 班级 ID | 必填，形如 `class_1780399937423`，网页端地址栏里能复制 |
+| 班级密码 | 留空 = 沿用；**明文保存，哈希设备自己算** |
+
+保存后：`/wifi.txt` 存 WiFi，`/class.txt` 存班级 ID + 明文密码，`sha256.h` 在需要时算出 `sha256(密码)` 用于 `X-Password-Hash`。用户不需要知道哈希是什么。
+
+开机连上后会先拉一次 `required`：如果返回 **401**，说明班级 ID 或密码不对，设备会清掉班级配置（保留 WiFi）、重启回配网页重填，屏幕提示 `Class config bad`。
 
 ## 依赖的后端接口
 

@@ -7,23 +7,31 @@
 #include <ESP8266WebServer.h>
 #include <LittleFS.h>
 #include "screen.h"
+#include "sha256.h"
 
 // ========================================
-// WiFi 配网 · 无按键版
+// 配网 + 班级配置（无按键版）
 // ========================================
-// 旧版靠 BUTTON1(GPIO0) 拉高进配网，那个键已经删了。
-// 现在改成：开机 loadWifiConfig() 读不到凭据 → 自动开 AP 配网。
-// 凭据落在 LittleFS 的 /wifi.txt，重启不再丢。
+// 一次 AP 配网同时收两样东西：
+//   1) WiFi 名称 / 密码          -> /wifi.txt
+//   2) 班级 ID / 班级密码        -> /class.txt，哈希由本机 sha256 自己算
+// 凭据落在 LittleFS，重启不丢。
 // ========================================
 
 #define WIFI_CONFIG_FILE   "/wifi.txt"
+#define CLASS_CONFIG_FILE  "/class.txt"
 #define AP_SSID            "OpenStu-Config"
 #define AP_PASSWORD        "openstu1234"   // 至少 8 位；改成 "" 就是开放热点
-#define AP_TIMEOUT_MS      180000UL        // 3 分钟没人配网就放弃（不再无限阻塞）
-#define AP_REPLY_DELAY_MS  800             // 响应必须发完再拆热点，否则手机端报错
+#define AP_TIMEOUT_MS      180000UL        // 3 分钟没人配网就放弃
+#define AP_REPLY_DELAY_MS  800             // 响应发完再拆热点，否则手机端报错
 
 char wifiSsid[51]     = {0};
 char wifiPassword[51] = {0};
+
+// 班级配置：密码明文也留一份（配网页回填/校验用），哈希开机时现算
+char classId[40]           = {0};
+char classPassword[40]     = {0};
+char classPasswordHash[65] = {0};
 
 static bool _fsReady = false;
 
@@ -34,7 +42,9 @@ static bool ensureFs() {
   return _fsReady;
 }
 
-// 读回凭据；没有文件或 SSID 为空返回 false（= 需要配网）
+// ========================================
+// WiFi 凭据
+// ========================================
 bool loadWifiConfig() {
   if (!ensureFs()) return false;
   File f = LittleFS.open(WIFI_CONFIG_FILE, "r");
@@ -67,29 +77,147 @@ bool saveWifiConfig(const char* ssid, const char* pwd) {
   return true;
 }
 
-// 清空凭据：连接超时后调用，下次开机自动回配网
 void clearWifiConfig() {
   if (ensureFs()) LittleFS.remove(WIFI_CONFIG_FILE);
   wifiSsid[0] = '\0';
   wifiPassword[0] = '\0';
 }
 
+// ========================================
+// 班级配置（哈希自己算，用户只输明文）
+// ========================================
+static bool computeClassHash() {
+  if (classPassword[0] == '\0') return false;
+  sha256_hex(classPassword, classPasswordHash);
+  return true;
+}
+
+// 班级 ID 形状：class_ + 数字，长度别超缓冲
+static bool classIdLooksOk(const String& id) {
+  if (id.length() < 7 || id.length() >= (int)sizeof(classId)) return false;
+  if (!id.startsWith("class_")) return false;
+  for (size_t i = 6; i < id.length(); ++i) {
+    if (id[i] < '0' || id[i] > '9') return false;
+  }
+  return true;
+}
+
+bool loadClassConfig() {
+  if (!ensureFs()) return false;
+  File f = LittleFS.open(CLASS_CONFIG_FILE, "r");
+  if (!f) return false;
+
+  String id  = f.readStringUntil('\n'); id.trim();
+  String pwd = f.readStringUntil('\n'); pwd.trim();
+  f.close();
+
+  if (!classIdLooksOk(id) || pwd.length() == 0) return false;
+
+  id.toCharArray(classId, sizeof(classId));
+  pwd.toCharArray(classPassword, sizeof(classPassword));
+  if (!computeClassHash()) return false;
+
+  Serial.printf("[class] loaded id=%s hash=%.8s...\n", classId, classPasswordHash);
+  return true;
+}
+
+bool saveClassConfig(const char* id, const char* pwd) {
+  if (!classIdLooksOk(String(id)) || strlen(pwd) == 0) return false;
+  if (strlen(pwd) >= sizeof(classPassword)) return false;
+  if (!ensureFs()) return false;
+
+  File f = LittleFS.open(CLASS_CONFIG_FILE, "w");
+  if (!f) return false;
+  f.print(id);  f.print('\n');
+  f.print(pwd); f.print('\n');
+  f.close();
+
+  strncpy(classId, id, sizeof(classId) - 1);
+  classId[sizeof(classId) - 1] = '\0';
+  strncpy(classPassword, pwd, sizeof(classPassword) - 1);
+  classPassword[sizeof(classPassword) - 1] = '\0';
+  computeClassHash();
+
+  Serial.printf("[class] saved id=%s hash=%.8s...\n", classId, classPasswordHash);
+  return true;
+}
+
+void clearClassConfig() {
+  if (ensureFs()) LittleFS.remove(CLASS_CONFIG_FILE);
+  classId[0] = '\0';
+  classPassword[0] = '\0';
+  classPasswordHash[0] = '\0';
+}
+
+// ========================================
+// 配网页
+// ========================================
+static String escapeHtml(const String& in) {
+  String out;
+  out.reserve(in.length() + 8);
+  for (size_t i = 0; i < in.length(); ++i) {
+    char c = in[i];
+    switch (c) {
+      case '&':  out += "&amp;";  break;
+      case '<':  out += "&lt;";   break;
+      case '>':  out += "&gt;";   break;
+      case '"':  out += "&quot;"; break;
+      case '\'': out += "&#39;";  break;
+      default:   out += c;        break;
+    }
+  }
+  return out;
+}
+
+static const char PAGE_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenStu 配置</title>
+</head>
+<body style="font-family:-apple-system,'PingFang SC',sans-serif;max-width:480px;margin:24px auto;padding:0 16px;">
+  <h2>OpenStu 配置</h2>
+  <form method="POST" action="/save">
+    <h3>WiFi</h3>
+    WiFi 名称：<input type="text" name="ssid" maxlength="32" value="%SSID%" required
+      style="width:100%;padding:8px;margin:4px 0 12px;"><br>
+    WiFi 密码：<input type="password" name="pwd" maxlength="63" placeholder="留空 = 保持原密码"
+      style="width:100%;padding:8px;margin:4px 0 16px;"><br>
+
+    <h3>班级</h3>
+    班级 ID：<input type="text" name="class_id" maxlength="39" value="%CLASSID%"
+      placeholder="class_1780399937423" required
+      style="width:100%;padding:8px;margin:4px 0 12px;"><br>
+    班级密码：<input type="password" name="class_pwd" maxlength="39" placeholder="留空 = 保持原密码"
+      style="width:100%;padding:8px;margin:4px 0 16px;"><br>
+
+    <input type="submit" value="保存并重启" style="width:100%;padding:12px;font-size:16px;">
+  </form>
+  <p style="color:#888;font-size:13px;line-height:1.6;">
+    班级 ID 在网页端地址栏里能看到（形如 <code>class_1780399937423</code>）。<br>
+    密码哈希由设备自己计算，不需要手动填 sha256。
+  </p>
+</body>
+</html>
+)rawliteral";
+
 // ----------------------------------------
 // 开 AP 配网，阻塞到成功或超时
-// 成功（凭据已落盘）返回 true
+// 成功（两套配置都落盘）返回 true
 // ----------------------------------------
 bool getWifi() {
-  // 先把 STA 彻底断开，避免残留配置把 AP 起在奇怪的信道上
   WiFi.persistent(false);
   WiFi.disconnect(true);
   delay(100);
   WiFi.mode(WIFI_AP);
-  delay(100);                 // 等 SDK 真正切完模式，softAP 才不会时好时坏
+  delay(100);
 
   bool apOk = (strlen(AP_PASSWORD) >= 8)
                 ? WiFi.softAP(AP_SSID, AP_PASSWORD)
                 : WiFi.softAP(AP_SSID);
-  if (!apOk) {                // 热点起不来就别装没事，直接上报
+  if (!apOk) {
     Serial.println("[ap] softAP() failed");
     return false;
   }
@@ -100,59 +228,53 @@ bool getWifi() {
 
   ESP8266WebServer server(80);
 
-  static const char PAGE_HTML[] PROGMEM = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>OpenStu 配网</title>
-</head>
-<body>
-  <h2>请输入 WiFi 名称和密码</h2>
-  <form method="POST" action="/save">
-    WiFi 名称：<input type="text"     name="ssid" maxlength="50" required><br><br>
-    WiFi 密码：<input type="password" name="pwd"  maxlength="50"><br><br>
-    <input type="submit" value="保存">
-  </form>
-  <p style="color:#666">保存后设备会自动重启并连接。</p>
-</body>
-</html>
-)rawliteral";
-
   bool done  = false;
   bool saved = false;
 
   server.on("/", HTTP_GET, [&server]() {
-    // 显式带 charset：中文提示才不会在某些浏览器里变成乱码
-    server.send_P(200, "text/html; charset=utf-8", PAGE_HTML);
+    String page = FPSTR(PAGE_HTML);
+    page.replace("%SSID%", escapeHtml(String(wifiSsid)));
+    page.replace("%CLASSID%", escapeHtml(String(classId)));
+    server.send(200, "text/html; charset=utf-8", page);
   });
 
   server.on("/save", HTTP_POST, [&server, &done, &saved]() {
-    String ssid = server.arg("ssid");
-    String pwd  = server.arg("pwd");
-    ssid.trim();
-    pwd.trim();
+    String ssid = server.arg("ssid");   ssid.trim();
+    String pwd  = server.arg("pwd");    pwd.trim();
+    String cid  = server.arg("class_id"); cid.trim();
+    String cpwd = server.arg("class_pwd"); cpwd.trim();
 
-    if (ssid.length() == 0) {
+    // 长度按字节校验：SSID 上限 32 字节，中文一字 3 字节
+    if (ssid.length() == 0 || ssid.length() > 32 || pwd.length() > 63) {
       server.send_P(200, "text/html; charset=utf-8",
-        "<meta charset='utf-8'><h3>WiFi 名称不能为空</h3><a href='/'>返回</a>");
-      return;                 // 不置 done，继续等用户重填
+        "<meta charset='utf-8'><h3>WiFi 名称或密码不合法</h3>"
+        "<p>名称最多 32 字节（约 10 个汉字），密码最多 63 字节。</p><a href='/'>返回</a>");
+      return;
     }
-
-    // 802.11 的上限按「字节」算，不是按字数：中文一字 3 字节，20 字就 60 字节了
-    if (ssid.length() > 32 || pwd.length() > 63) {
+    if (!classIdLooksOk(cid)) {
       server.send_P(200, "text/html; charset=utf-8",
-        "<meta charset='utf-8'><h3>名称或密码过长</h3>"
-        "<p>WiFi 名称最多 32 字节（约 10 个汉字），密码最多 63 字节。</p>"
-        "<a href='/'>返回</a>");
+        "<meta charset='utf-8'><h3>班级 ID 不合法</h3>"
+        "<p>应该形如 class_1780399937423。</p><a href='/'>返回</a>");
       return;
     }
 
-    saved = saveWifiConfig(ssid.c_str(), pwd.c_str());
+    // 留空 = 沿用已保存的值，方便只改其中一项
+    if (pwd.length() == 0 && wifiPassword[0] != '\0')  pwd  = String(wifiPassword);
+    if (cpwd.length() == 0 && classPassword[0] != '\0') cpwd = String(classPassword);
+    if (cpwd.length() == 0) {
+      server.send_P(200, "text/html; charset=utf-8",
+        "<meta charset='utf-8'><h3>班级密码不能为空</h3><a href='/'>返回</a>");
+      return;
+    }
+
+    bool wifiOk  = saveWifiConfig(ssid.c_str(), pwd.c_str());
+    bool classOk = saveClassConfig(cid.c_str(), cpwd.c_str());
+    saved = wifiOk && classOk;
+
     server.send_P(200, "text/html; charset=utf-8",
       saved
-        ? "<meta charset='utf-8'><h3>保存成功，设备即将重启并连接该 WiFi。</h3>"
+        ? "<meta charset='utf-8'><h3>保存成功，设备即将重启。</h3>"
+          "<p>WiFi 与班级配置都已写入，密码哈希由设备自己算好了。</p>"
         : "<meta charset='utf-8'><h3>写入失败（存储异常），请重试。</h3>");
     done = true;
   });
@@ -164,7 +286,6 @@ bool getWifi() {
 
   server.begin();
 
-  // 带超时的等待：没人配网也不会把设备永久卡死在这里
   uint32_t start = millis();
   while (!done && (millis() - start) < AP_TIMEOUT_MS) {
     server.handleClient();
@@ -179,7 +300,7 @@ bool getWifi() {
     return false;
   }
 
-  delay(AP_REPLY_DELAY_MS);   // 等浏览器收完响应，避免「提交后页面报无法访问」
+  delay(AP_REPLY_DELAY_MS);
   server.stop();
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_STA);

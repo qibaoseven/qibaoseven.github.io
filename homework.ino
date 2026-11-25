@@ -25,11 +25,9 @@
 #include "cardreader.h"
 #include "input.h"
 
-// ---------- 班级配置 ----------
+// ---------- 服务器 ----------
+// 班级 ID / 密码不再写死：配网页里填，设备自己算 sha256(密码)
 #define SERVER_HOST          "os-stu.netlify.app"
-#define CLASS_ID             "class_1780399937423"        // ← 你的班级 ID
-#define CLASS_PASSWORD       "706"                        // ← 班级密码
-#define CLASS_PASSWORD_HASH  "35254aa9a21444e50349cebb5465b9b42cb4a625ebcbffe24504b178c35bcb85"
 
 // ---------- 行为参数 ----------
 #define SUBMIT_HOUR_START    7           // 07:00 开始收
@@ -122,14 +120,17 @@ static void showMessage(const char* msg) {
 // ========================================
 // 网络：取应交科目 / 提交一条
 // ========================================
-static bool fetchRequired() {
+// 返回 HTTP 状态码：0 = 成功，401/4xx = 服务端拒绝，<0 = 没连上
+static int fetchRequired() {
+  if (classId[0] == '\0') return -1;
+
   char date[11];
   todayString(date, sizeof(date));
 
   char url[192];
   snprintf(url, sizeof(url),
            "https://%s/api/class/%s/homework/required?date=%s",
-           SERVER_HOST, CLASS_ID, date);
+           SERVER_HOST, classId, date);
 
   WiFiClientSecure client;
   client.setInsecure();                 // 没带根证书，省 RAM；校园内网够用
@@ -137,12 +138,12 @@ static bool fetchRequired() {
 
   HTTPClient http;
   http.setTimeout(HTTP_TIMEOUT_MS);
-  if (!http.begin(client, url)) return false;
-  http.addHeader("X-Password", CLASS_PASSWORD);
-  http.addHeader("X-Password-Hash", CLASS_PASSWORD_HASH);
+  if (!http.begin(client, url)) return -1;
+  http.addHeader("X-Password", classPassword);
+  http.addHeader("X-Password-Hash", classPasswordHash);
 
   int code = http.GET();
-  if (code != 200) { http.end(); return false; }
+  if (code != 200) { http.end(); return code; }
 
   String payload = http.getString();
   http.end();                            // 连接立刻释放，别占着 RAM
@@ -177,7 +178,7 @@ static bool fetchRequired() {
 
   Serial.printf("[hw] date=%s students=%d required=%d submitted=%d total=%d\n",
                 date, studentCount, requiredCount, submitted, totalItems);
-  return true;
+  return 0;
 }
 
 // 返回 HTTP 状态码；<=0 表示没连上/超时
@@ -194,7 +195,7 @@ static int postUpdate(const uint8_t* uid, uint8_t len, uint8_t subjectId, bool* 
            uidJson, date, subjectId);
 
   char url[160];
-  snprintf(url, sizeof(url), "https://%s/api/class/%s/homework/update", SERVER_HOST, CLASS_ID);
+  snprintf(url, sizeof(url), "https://%s/api/class/%s/homework/update", SERVER_HOST, classId);
 
   WiFiClientSecure client;
   client.setInsecure();
@@ -204,8 +205,8 @@ static int postUpdate(const uint8_t* uid, uint8_t len, uint8_t subjectId, bool* 
   http.setTimeout(HTTP_TIMEOUT_MS);
   if (!http.begin(client, url)) return -1;
   http.addHeader("Content-Type", "application/json");
-  http.addHeader("X-Password", CLASS_PASSWORD);
-  http.addHeader("X-Password-Hash", CLASS_PASSWORD_HASH);
+  http.addHeader("X-Password", classPassword);
+  http.addHeader("X-Password-Hash", classPasswordHash);
 
   int code = http.POST((uint8_t*)body, strlen(body));
   *changed = false;
@@ -286,9 +287,10 @@ void setup() {
     ESP.restart();
   }
 
-  // 2) WiFi：没凭据自动进 AP 配网
-  if (!loadWifiConfig()) {
-    lcdset("Config AP mode", "no wifi saved");
+  // 2) 配网：WiFi 或班级配置任一缺失，就开 AP 一次性补齐
+  if (!loadWifiConfig() || !loadClassConfig()) {
+    lcdset("Config AP mode", "wifi + class");
+    Serial.println("[cfg] missing wifi or class config, entering AP");
     if (!getWifi()) {
       lcdset("Config failed");
       delay(3000);
@@ -314,7 +316,15 @@ void setup() {
 
   // 4) 拉今天要交哪些科目
   lcdset("Loading homework", "");
-  if (!fetchRequired()) {
+  int rc = fetchRequired();
+  if (rc == 401) {
+    // 班级 ID 或密码不对：清掉班级配置，重启后重新配
+    lcdset("Class config bad", "re-enter");
+    Serial.println("[hw] 401 from server, class config rejected");
+    clearClassConfig();
+    delay(3000);
+    ESP.restart();
+  } else if (rc != 0) {
     lcdset("No homework data", "retry later");
   } else if (requiredCount == 0) {
     lcdset("No homework today", "");
@@ -341,7 +351,16 @@ void loop() {
   uint32_t refresh = (totalItems > 0) ? REQUIRED_REFRESH_MS : REQUIRED_RETRY_MS;
   if (now - lastFetchMs >= refresh) {
     lastFetchMs = now;
-    if (WiFi.status() == WL_CONNECTED) fetchRequired();
+    if (WiFi.status() == WL_CONNECTED) {
+      int rc = fetchRequired();
+      if (rc == 401) {
+        // 班级凭据被拒（改了班级密码之类）：清配置，回配网重填
+        showMessage("class config bad");
+        clearClassConfig();
+        delay(2000);
+        ESP.restart();
+      }
+    }
   }
 
   // 状态消息到期回时钟
