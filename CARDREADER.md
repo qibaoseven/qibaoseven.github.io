@@ -128,13 +128,21 @@ arduino-cli lib install "MFRC522" "Adafruit PN532" "LiquidCrystal I2C"
 arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 homework   # 目录名需为 homework
 ```
 
-占用（`nodemcuv2`，1MB flash / 80KB RAM）：
+**1MB 板子用这个 FQBN**（重要：`nodemcuv2` 这个板型没有 1MB 选项，要选 `generic`）：
+
+```bash
+arduino-cli compile --fqbn esp8266:esp8266:generic:eesz=1M64 homework
+```
+
+`1M64` = 1MB Flash、文件系统 64KB。对应布局：代码区到 `0xEB000`（`irom0_0_seg` 长度 `0xe9ff0` ≈ 936KB），文件系统 `0xEB000~0xFB000`（正好 64KB，块 4KB），最后 `0xFC000` 放 RF 校准。当前固件 470544 字节，占代码区一半，64KB 的文件系统存两个几百字节的配置文件绰绰有余。Arduino IDE 里对应选 **Generic ESP8266 Module / 1MB (FS:64KB OTA:~470KB)**。
+
+占用（`nodemcuv2` 与 `generic:eesz=1M64` 代码量一致，1MB flash / 80KB RAM）：
 
 | 项 | 用量 |
 |---|---|
 | RAM（全局） | 33412 / 80192 字节（41%） |
 | IRAM | 28755 / 65536（93%，含 32KB cache 预留，属正常） |
-| Flash 代码 | 430856 / 1048576（41%），bin 约 470KB |
+| Flash 代码 | 430,952 字节；1M64 布局的实际上限是 958,448（约 936KB），占 45%，bin 470,544 字节 |
 
 注意两点：`homework.ino` 里的本地取时函数必须叫 `readLocalTime`（原名 `getLocalTime` 会和 ESP8266 core 的 `getLocalTime(tm*, ms)` 二义性冲突）；`LiquidCrystal I2C` 库标注只支持 AVR，编译有 architecture 提示但不影响 ESP8266 使用。
 
