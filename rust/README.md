@@ -44,7 +44,7 @@ Windows 单文件 exe（Linux 上交叉编译，需要 mingw-w64）：
 ```bash
 sudo apt-get install mingw-w64
 cd rust && ./build.sh windows
-# 产物：rust/OpenStu.exe，约 990 KB（opt-level="s" + LTO + strip）
+# 产物：rust/OpenStu.exe，约 0.96 MB（opt-level="s" + LTO + strip）
 ```
 
 或者直接在 Windows 上用 rustup 的默认工具链：
@@ -98,6 +98,7 @@ data/
 
 - Python 写 → Rust 读：12 个 GET 接口逐字段一致。
 - Rust 写 → Python 读：写完之后把数据目录换给 Python，同样 0 差异。
+- 交叉编译出的 Windows exe 在 wine 里跑同一套用例，同样 0 差异。
 - 写入与错误码：`classes/create`、`homework/init|day|update`（200/`changed`、404 `UID_NOT_BOUND`、
   409 `SUBJECT_NOT_REQUIRED`）、`uuids` 三个接口（`added` 语义、同卡不能绑两学号）、
   `journal` 追加（含字符数统计）逐条对齐，全部 0 差异。
@@ -107,13 +108,21 @@ data/
 | 项 | Python 版 | C++ 版 | Rust 版 |
 | --- | --- | --- | --- |
 | 依赖 | Flask | 无（自研密码学） | crates.io 纯 Rust 库 |
-| 产物 | 源码目录 | 单文件 exe 1.7 MB | 单文件 exe 0.99 MB |
+| 产物 | 源码目录 | 单文件 exe 1.7 MB | 单文件 exe 0.96 MB |
 | 前端 | 目录现读 | 编进二进制 | 编进二进制（`include_bytes!`） |
 | 浏览器 | 手动 | 自动 | 自动 |
 | `/api/classes/import` | 支持（JsonBin+TLS） | 不支持 | 不支持（同样返回 400 提示） |
 
-`OpenStu.exe` 依赖 `bcryptprimitives.dll`（Rust 标准库在 Win10 起用 `ProcessPrng` 取随机数），
-所以**要 Windows 10 / 11**；Win7 上跑不了。C++ 版没有这个限制，老机器可以选 C++ 版。
+`OpenStu.exe` 的依赖只有系统自带 DLL：`kernel32` / `bcrypt`（Vista 起就有）/ `ws2_32` / `msvcrt`。
+**不带 `bcryptprimitives.dll` 依赖**——为了让 Win7/8 和 wine 也能跑，随机数与本地时间都改成直接调系统 API：
+
+- 随机字节：Windows 走 `BCryptGenRandom`，Unix 走 `/dev/urandom`；不再用 std 的进程随机种子，
+  也不让 `HashMap` 的默认哈希器去取种子（内部改用 `BTreeMap`）。
+- 本地时间：Windows 走 `GetLocalTime`，Unix 走 `localtime_r`；不走 chrono 的时区数据库，
+  避免系统时区信息缺失时 panic。
+
+已经在 wine（Windows 兼容层）里跑过完整联调：起服务、发静态页面、`/api/*` 读写全部正常，
+和 Python 版逐请求比对 0 差异（唯一"不同"的是 `/homework/raw` 的密文本体，IV 随机所致）。
 
 ## 开机自启（可选）
 

@@ -11,6 +11,7 @@ mod assets_support;
 mod core;
 mod crypto;
 mod http;
+mod localtime;
 mod rng;
 mod routes_basic;
 mod routes_homework;

@@ -3,7 +3,7 @@
 //   · 每连接一个线程，处理完就关（够一个班用）
 //   · 自动补 CORS 头，兼容前端的 /.netlify/functions/api 前缀
 // ========================================
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
@@ -16,7 +16,7 @@ pub struct Request {
     pub method: String,
     pub path: String,
     pub query: String,
-    pub headers: HashMap<String, String>, // key 全小写
+    pub headers: BTreeMap<String, String>, // key 全小写
     pub body: String,
 }
 
@@ -164,7 +164,7 @@ fn read_request(stream: &mut TcpStream) -> Option<Request> {
     let method = parts.next()?.to_string();
     let target = parts.next()?.to_string();
 
-    let mut headers: HashMap<String, String> = HashMap::new();
+    let mut headers: BTreeMap<String, String> = BTreeMap::new();
     loop {
         let mut h = String::new();
         if reader.read_line(&mut h).ok()? == 0 {

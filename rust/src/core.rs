@@ -5,7 +5,9 @@
 //   · 当天应交清单 required
 //   · UID 归一化（7 字节）
 // ========================================
-use chrono::{Datelike, Local, NaiveDate, Timelike};
+use chrono::{Datelike, NaiveDate, Timelike};
+
+pub use crate::localtime::{local_fields, today_local};
 use serde_json::{json, Map, Value};
 
 use crate::crypto::{decrypt_plain, encrypt_plain};
@@ -18,10 +20,7 @@ pub type Date = NaiveDate;
 /// [天][学生][学科]，学生维包含 0 号机器人哨兵
 pub type HwData = Vec<Vec<Vec<u8>>>;
 
-// ---------- 日期 ----------
-pub fn today_local() -> Date {
-    Local::now().date_naive()
-}
+// ---------- 日期（today_local 由 crate::localtime 提供，直接问系统） ----------
 
 pub fn iso_date(d: &Date) -> String {
     d.format("%Y-%m-%d").to_string()
@@ -37,24 +36,15 @@ pub fn parse_date(text: &str) -> Option<Date> {
     NaiveDate::parse_from_str(&t[0..10], fmt).ok()
 }
 
-/// 上海时间戳：2026/11/25 21:48:09（月/日不补零，与 Python 的 strftime 一致）
+/// 本地时间戳：2026/11/25 21:48:09（月/日不补零，与 Python 的 strftime 一致）
 pub fn now_stamp() -> String {
-    let now = Local::now();
-    format!(
-        "{}/{}/{} {:02}:{:02}:{:02}",
-        now.year(),
-        now.month(),
-        now.day(),
-        now.hour(),
-        now.minute(),
-        now.second()
-    )
+    let (y, m, d, h, mi, s) = local_fields();
+    format!("{}/{}/{} {:02}:{:02}:{:02}", y, m, d, h, mi, s)
 }
 
 /// ISO 时间戳（UTC，毫秒固定 .000Z），用于 classes 的 created_at
 pub fn utc_stamp() -> String {
-    use chrono::Utc;
-    let now = Utc::now();
+    let now = chrono::Utc::now();
     format!(
         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.000Z",
         now.year(),
@@ -67,7 +57,7 @@ pub fn utc_stamp() -> String {
 }
 
 pub fn ms_timestamp() -> i64 {
-    Local::now().timestamp_millis()
+    chrono::Utc::now().timestamp_millis()
 }
 
 // ---------- 作业数据 ----------
