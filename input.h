@@ -22,8 +22,10 @@
 #define CLASS_CONFIG_FILE  "/class.txt"
 #define AP_SSID            "OpenStu-Config"
 #define AP_PASSWORD        "openstu1234"   // 至少 8 位；改成 "" 就是开放热点
-#define AP_TIMEOUT_MS      180000UL        // 3 分钟没人配网就放弃
+#define AP_CARD_POLL_MS    20              // 配网期间轮询读卡的间隔
 #define AP_REPLY_DELAY_MS  800             // 响应发完再拆热点，否则手机端报错
+// 不再有超时：热点一直开着，直到「保存成功 + 刷一次卡」才退出。
+// 这样配网中途手抖不会被打断；刷卡即锁定，再改只能按 RST 重来。
 
 char wifiSsid[51]     = {0};
 char wifiPassword[51] = {0};
@@ -193,8 +195,11 @@ static const char PAGE_HTML[] PROGMEM = R"rawliteral(
     班级密码：<input type="password" name="class_pwd" maxlength="39" placeholder="留空 = 保持原密码"
       style="width:100%;padding:8px;margin:4px 0 16px;"><br>
 
-    <input type="submit" value="保存并重启" style="width:100%;padding:12px;font-size:16px;">
+    <input type="submit" value="保存（可反复修改）" style="width:100%;padding:12px;font-size:16px;">
   </form>
+  <p style="color:#c00;font-size:14px;line-height:1.6;">
+    <b>保存后刷一次卡</b>才会退出配网并开始工作；刷卡即锁定，要重配只能按 RST。
+  </p>
   <p style="color:#888;font-size:13px;line-height:1.6;">
     班级 ID 在网页端地址栏里能看到（形如 <code>class_1780399937423</code>）。<br>
     密码哈希由设备自己计算，不需要手动填 sha256。
@@ -204,8 +209,8 @@ static const char PAGE_HTML[] PROGMEM = R"rawliteral(
 )rawliteral";
 
 // ----------------------------------------
-// 开 AP 配网，阻塞到成功或超时
-// 成功（两套配置都落盘）返回 true
+// 开 AP 配网，阻塞到「保存过 + 刷一次卡」才返回
+// 刷卡前可以反复修改，刷卡即锁定
 // ----------------------------------------
 bool getWifi() {
   WiFi.persistent(false);
@@ -228,8 +233,7 @@ bool getWifi() {
 
   ESP8266WebServer server(80);
 
-  bool done  = false;
-  bool saved = false;
+  bool saved = false;                    // 本次配网有没有成功保存过
 
   server.on("/", HTTP_GET, [&server]() {
     String page = FPSTR(PAGE_HTML);
@@ -238,7 +242,7 @@ bool getWifi() {
     server.send(200, "text/html; charset=utf-8", page);
   });
 
-  server.on("/save", HTTP_POST, [&server, &done, &saved]() {
+  server.on("/save", HTTP_POST, [&server, &saved]() {
     String ssid = server.arg("ssid");   ssid.trim();
     String pwd  = server.arg("pwd");    pwd.trim();
     String cid  = server.arg("class_id"); cid.trim();
@@ -273,10 +277,10 @@ bool getWifi() {
 
     server.send_P(200, "text/html; charset=utf-8",
       saved
-        ? "<meta charset='utf-8'><h3>保存成功，设备即将重启。</h3>"
-          "<p>WiFi 与班级配置都已写入，密码哈希由设备自己算好了。</p>"
+        ? "<meta charset='utf-8'><h3>已保存。</h3>"
+          "<p>还可以继续改并再次保存；<b>确认无误后刷一次卡</b>，"
+          "设备会退出配网并开始工作。刷卡后配置就锁定了。</p><a href='/'>返回继续改</a>"
         : "<meta charset='utf-8'><h3>写入失败（存储异常），请重试。</h3>");
-    done = true;
   });
 
   server.onNotFound([&server]() {
@@ -286,25 +290,47 @@ bool getWifi() {
 
   server.begin();
 
-  uint32_t start = millis();
-  while (!done && (millis() - start) < AP_TIMEOUT_MS) {
+  // 一直等：网页可以反复改，第一张卡刷上来才算确认
+  uint8_t  uid[CARD_UID_MAX];
+  uint32_t lastPoll = 0;
+  while (true) {
     server.handleClient();
+
+    if (millis() - lastPoll >= AP_CARD_POLL_MS) {
+      lastPoll = millis();
+      int n = cardPoll(uid, CARD_UID_MAX);
+      if (n > 0) {
+        char hex[3 * CARD_UID_MAX + 1];
+        uidToHex(uid, (uint8_t)n, hex);
+        Serial.printf("[ap] card=%s\n", hex);
+
+        bool complete = saved
+                     && wifiSsid[0] != '\0'
+                     && classId[0] != '\0'
+                     && classPassword[0] != '\0';
+        if (!complete) {
+          // 还没保存成功就刷卡：不当确认，只提示，免得半套配置被锁
+          lcdset("Card seen", "save first");
+          Serial.println("[ap] card ignored: config not saved yet");
+          delay(1200);
+          lcdset("AP: OpenStu", ip.c_str());
+          continue;
+        }
+
+        lcdset("Config locked", "restarting");
+        Serial.println("[ap] card confirm, leaving config mode");
+        break;
+      }
+    }
+
     delay(2);
   }
 
-  if (!done) {
-    Serial.println("[ap] config timeout");
-    server.stop();
-    WiFi.softAPdisconnect(true);
-    WiFi.mode(WIFI_STA);
-    return false;
-  }
-
-  delay(AP_REPLY_DELAY_MS);
+  delay(AP_REPLY_DELAY_MS);              // 让最后一次网页响应先发完
   server.stop();
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_STA);
-  return saved;
+  return true;
 }
 
 #endif // HOMEWORK_WIFI_CONFIG
