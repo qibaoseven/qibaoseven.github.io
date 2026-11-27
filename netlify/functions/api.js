@@ -15,7 +15,10 @@ const {
     dateKey,
     getRequiredForDate,
     setRequiredForDate,
-    countSubmittedForDate
+    countSubmittedForDate,
+    countSubmittedTyped,
+    requiredTotal,
+    loadTypeSets
 } = require('./homework');
 const {
     getJournal,
@@ -569,12 +572,42 @@ exports.handler = async (event) => {
 
             try {
                 const result = await addUuid(classStore, studentId, uid);
+
+                // 可选：绑卡同时登记作业（学科 + 可选作业种类）
+                let submission = null;
+                if (payload.subject_id !== undefined && payload.subject_id !== null) {
+                    const subjectId = Number(payload.subject_id);
+                    if (!Number.isInteger(subjectId) || subjectId < 0) {
+                        return handleResponse(400, { error: '无效的学科ID' });
+                    }
+                    const targetDate = payload.target_date || dateKey(new Date());
+                    const rawType = payload.type_id !== undefined ? payload.type_id
+                        : (payload.homework_type !== undefined ? payload.homework_type : payload.type);
+                    const typeId = (rawType === undefined || rawType === null || rawType === '')
+                        ? null : Number(rawType);
+                    if (typeId !== null && (!Number.isInteger(typeId) || typeId < 0)) {
+                        return handleResponse(400, { error: '无效的作业种类' });
+                    }
+                    const sidNum = Number(studentId);
+                    if (!Number.isInteger(sidNum) || sidNum < 0) {
+                        return handleResponse(400, { error: '缺少或非法的 student_id' });
+                    }
+                    const submit = await updateHomework(classStore, sidNum,
+                        targetDate, subjectId, password, typeId);
+                    submission = {
+                        submitted: !!submit.saved,
+                        changed: !!submit.changed,
+                        typesDone: submit.typesDone || []
+                    };
+                }
+
                 return handleResponse(200, {
                     message: result.added ? '已追加' : '已更新',
                     class_id: classId,
                     added: result.added,
                     count: result.count,
-                    uuids: result.uuids
+                    uuids: result.uuids,
+                    submission
                 });
             } catch (e) {
                 return handleResponse(400, { error: e.message });
@@ -617,6 +650,7 @@ exports.handler = async (event) => {
                     studentCount: student_count,
                     subjectCount: subject_count,
                     subjectNames: subject_names,
+                    types: (JSON.parse(body).types) || {},
                     startDate: start_date || null
                 }, password);
                 return handleResponse(200, result);
@@ -695,7 +729,10 @@ exports.handler = async (event) => {
             if (required.length && meta) {
                 try {
                     const result = await getHomeworkData(classStore, password);
-                    if (result.exists) submitted = countSubmittedForDate(result.data, date, required);
+                    if (result.exists) {
+                        const typeSets = await loadTypeSets(classStore);
+                        submitted = countSubmittedTyped(result.data, meta, typeSets, date, required);
+                    }
                 } catch (e) {
                     // 数据解不开就当 0，不影响设备拿到应交科目
                 }
@@ -706,9 +743,10 @@ exports.handler = async (event) => {
                 date,
                 required,
                 subjectNames: meta ? meta.subjectNames : {},
+                types: meta ? (meta.types || {}) : {},
                 studentCount: meta ? meta.studentCount : 0,
                 submitted,
-                total: (meta ? meta.studentCount : 0) * required.length
+                total: requiredTotal(meta, meta ? meta.studentCount : 0, required)
             });
         }
 
@@ -946,13 +984,23 @@ exports.handler = async (event) => {
                     });
                 }
                 
-                const result = await updateHomework(classStore, Number(resolvedId), target_date, subject_id, password);
+                const rawType = payload.type_id !== undefined ? payload.type_id
+                    : (payload.homework_type !== undefined ? payload.homework_type : payload.type);
+                const typeId = (rawType === undefined || rawType === null || rawType === '')
+                    ? null : Number(rawType);
+                if (typeId !== null && (!Number.isInteger(typeId) || typeId < 0)) {
+                    return handleResponse(400, { error: '无效的作业种类' });
+                }
+
+                const result = await updateHomework(classStore, Number(resolvedId), target_date, subject_id, password, typeId);
                 if (result && result.saved) {
                     return handleResponse(200, {
                         message: '更新成功',
                         student_id: Number(resolvedId),
                         target_date,
                         subject_id: subjectId,
+                        type_id: typeId,
+                        typesDone: result.typesDone || [],
                         changed: !!result.changed      // false = 之前就已经交过了
                     });
                 } else {

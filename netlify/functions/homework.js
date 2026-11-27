@@ -305,16 +305,36 @@ async function initHomeworkSystem(classStore, config, password = null) {
         throw new Error('保存作业数据失败');
     }
     
+    // 作业种类（可选）：{ "0": ["练习与测试", "试卷"] }；空数组视为没配
+    const types = {};
+    const rawTypes = (config && config.types) || {};
+    if (rawTypes && typeof rawTypes === 'object') {
+        Object.keys(rawTypes).forEach(key => {
+            const idx = Number(key);
+            if (!Number.isInteger(idx) || idx < 0 || idx >= subjectCount) return;
+            const value = rawTypes[key];
+            if (!Array.isArray(value)) return;
+            const names = [];
+            value.forEach(item => {
+                const text = String(item == null ? '' : item).trim();
+                if (text && !names.includes(text)) names.push(text);
+            });
+            if (names.length) types[String(idx)] = names;
+        });
+    }
+
     // 保存元数据(学科名称等)
     const meta = {
         studentCount,
         subjectCount,
         subjectNames,
+        types,
         initializedAt: new Date().toISOString(),
         startDate: start.toISOString().split('T')[0]
     };
     await classStore.set('homework_meta', JSON.stringify(meta));
-    
+    await classStore.set('homework_types', '{}');
+
     return {
         success: true,
         message: '作业系统初始化成功',
@@ -322,6 +342,7 @@ async function initHomeworkSystem(classStore, config, password = null) {
             studentCount,
             subjectCount,
             subjectNames,
+            types,
             actualStudents,
             startDate: start.toISOString().split('T')[0]
         }
@@ -348,7 +369,7 @@ async function isHomeworkInitialized(classStore) {
 /**
  * 更新某个学生在某天某学科的作业提交情况
  */
-async function updateHomework(classStore, studentId, targetDate, subjectId, password = null) {
+async function updateHomework(classStore, studentId, targetDate, subjectId, password = null, typeId = null) {
     if (!password) {
         throw new Error('更新作业需要密码');
     }
@@ -408,15 +429,39 @@ async function updateHomework(classStore, studentId, targetDate, subjectId, pass
         throw new Error(`无效的学科ID: ${subjectId}`);
     }
     
-    // 更新数据(将对应位置设为1表示已提交)
+    // 更新数据
     // changed 用来告诉刷卡设备「这条是不是真的从 0 变 1」，
     // 重复刷同一张卡就不会把进度重复 +1。
     const wasSet = homeworkData[dayIndex][studentId][subjectId] === 1;
-    homeworkData[dayIndex][studentId][subjectId] = 1;
-    
+    const meta = (await getHomeworkMeta(classStore)) || {};
+    const subjectTypes = typesOf(meta, subjectId);
+    const typeSets = await loadTypeSets(classStore);
+    const dkey = dateKey(targetDateObj);
+    let changed = !wasSet;
+    let typesDone = [];
+
+    if (subjectTypes.length === 0) {
+        homeworkData[dayIndex][studentId][subjectId] = 1;
+    } else {
+        const before = typeSetFor(typeSets, dkey, studentId, subjectId);
+        const picked = (typeId === null || typeId === undefined)
+            ? subjectTypes.map((_, i) => i)
+            : [Number(typeId)];
+        if (picked.some(i => !Number.isInteger(i) || i < 0 || i >= subjectTypes.length)) {
+            throw new Error('作业种类超出范围');
+        }
+        typeMark(typeSets, dkey, studentId, subjectId, picked);
+        const after = typeSetFor(typeSets, dkey, studentId, subjectId);
+        changed = after.length > before.length || !wasSet;
+        const allDone = subjectTypes.every((_, i) => after.includes(i));
+        homeworkData[dayIndex][studentId][subjectId] = allDone ? 1 : 0;
+        typesDone = after;
+    }
+
     // 保存数据
     const saved = await saveHomeworkData(classStore, homeworkData, password);
-    return { saved: !!saved, changed: !wasSet };
+    await saveTypeSets(classStore, typeSets);
+    return { saved: !!saved, changed, typesDone };
 }
 
 /**
@@ -629,6 +674,97 @@ function countSubmittedForDate(homeworkData, date, required) {
     return count;
 }
 
+// ========================================
+// 作业种类（第四维）
+// ----------------------------------------
+// 主数据仍是 [天][学生][学科] 一 bit，老班级照旧能读；
+// 种类单独存明文 JSON（键 homework_types）：
+//   { "2026-11-27": { "23": { "0": [0,2] } } }
+// 学科 bit = 该科所有种类交齐才置 1。
+// ========================================
+function typesOf(meta, subjectId) {
+    if (!meta || typeof meta !== 'object') return [];
+    const raw = meta.types || {};
+    if (!raw || typeof raw !== 'object') return [];
+    const value = raw[String(subjectId)];
+    if (!Array.isArray(value)) return [];
+    return value.map(v => String(v)).filter(v => v.trim() !== '');
+}
+
+async function loadTypeSets(classStore) {
+    const raw = await classStore.get('homework_types');
+    if (!raw) return {};
+    try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (e) {
+        return {};
+    }
+}
+
+async function saveTypeSets(classStore, data) {
+    await classStore.set('homework_types', JSON.stringify(data));
+}
+
+function typeSetFor(root, dkey, studentId, subjectId) {
+    if (!root || typeof root !== 'object') return [];
+    const day = root[dkey];
+    if (!day || typeof day !== 'object') return [];
+    const stu = day[String(studentId)];
+    if (!stu || typeof stu !== 'object') return [];
+    const value = stu[String(subjectId)];
+    if (!Array.isArray(value)) return [];
+    return value.map(n => Number(n)).filter(n => Number.isInteger(n) && n >= 0);
+}
+
+function typeMark(root, dkey, studentId, subjectId, idxs) {
+    if (!root[dkey]) root[dkey] = {};
+    if (!root[dkey][String(studentId)]) root[dkey][String(studentId)] = {};
+    const marked = typeSetFor(root, dkey, studentId, subjectId);
+    idxs.forEach(i => { if (!marked.includes(i)) marked.push(i); });
+    marked.sort((a, b) => a - b);
+    root[dkey][String(studentId)][String(subjectId)] = marked;
+}
+
+function requiredTotal(meta, studentCount, required) {
+    let perStudent = 0;
+    (required || []).forEach(subject => {
+        const n = typesOf(meta, subject).length;
+        perStudent += n === 0 ? 1 : n;
+    });
+    return (studentCount || 0) * perStudent;
+}
+
+function countSubmittedTyped(homeworkData, meta, typeSets, date, required) {
+    if (!homeworkData || !required || !required.length) return 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const totalDays = homeworkData.length;
+    const dateFrom = new Date(today);
+    dateFrom.setDate(dateFrom.getDate() - (totalDays - 1));
+
+    const target = new Date(date);
+    target.setHours(0, 0, 0, 0);
+    const dayIndex = Math.floor((target - dateFrom) / (24 * 60 * 60 * 1000));
+    if (dayIndex < 0 || dayIndex >= totalDays) return 0;
+
+    const dkey = dateKey(target);
+    const day = homeworkData[dayIndex] || [];
+    let count = 0;
+    for (let sid = 1; sid < day.length; sid++) {
+        const row = day[sid] || [];
+        required.forEach(subject => {
+            const types = typesOf(meta, subject);
+            if (types.length === 0) {
+                if (subject < row.length && row[subject] === 1) count++;
+            } else {
+                count += typeSetFor(typeSets, dkey, sid, subject).filter(i => i < types.length).length;
+            }
+        });
+    }
+    return count;
+}
+
 module.exports = {
     toBitarray,
     fromBitarray,
@@ -646,5 +782,12 @@ module.exports = {
     dateKey,
     getRequiredForDate,
     setRequiredForDate,
-    countSubmittedForDate
+    countSubmittedForDate,
+    typesOf,
+    loadTypeSets,
+    saveTypeSets,
+    typeSetFor,
+    typeMark,
+    requiredTotal,
+    countSubmittedTyped
 };
