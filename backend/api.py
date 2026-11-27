@@ -40,6 +40,12 @@ from homework import (
     get_required_for_date,
     set_required_for_date,
     count_submitted_for_date,
+    count_submitted_typed,
+    required_total,
+    submit_homework,
+    load_type_sets,
+    types_of,
+    TYPES_KEY,
 )
 from journal import (
     get_journal,
@@ -394,6 +400,7 @@ def route_homework_init(path):
             'studentCount': student_count,
             'subjectCount': subject_count,
             'subjectNames': {str(k): v for k, v in subject_names.items()},
+            'types': payload.get('types') or {},
             'startDate': payload.get('start_date'),
         }, password))
         return json_response(result)
@@ -454,11 +461,13 @@ def route_homework_required(path):
     required = asyncio_run(get_required_for_date(class_store, date))
 
     submitted = 0
+    type_sets = {}
     if required and meta:
         try:
             result = asyncio_run(get_homework_data(class_store, password))
             if result['exists']:
-                submitted = count_submitted_for_date(result['data'], date, required)
+                type_sets = asyncio_run(load_type_sets(class_store))
+                submitted = count_submitted_typed(result['data'], meta, type_sets, date, required)
         except Exception:
             submitted = 0        # 解不开就当 0，别挡设备拿清单
 
@@ -467,9 +476,10 @@ def route_homework_required(path):
         'date': date,
         'required': required,
         'subjectNames': (meta or {}).get('subjectNames', {}),
+        'types': (meta or {}).get('types', {}),
         'studentCount': (meta or {}).get('studentCount', 0),
         'submitted': submitted,
-        'total': (meta or {}).get('studentCount', 0) * len(required),
+        'total': required_total(meta, (meta or {}).get('studentCount', 0), required),
     })
 
 
@@ -497,11 +507,14 @@ def route_homework_get(path):
         return json_response({'error': '作业数据不存在'}, 404)
 
     rng = get_date_range(result['data'])
+    meta = asyncio_run(get_homework_meta(class_store)) or {}
     return json_response({
         'data': result['data'],
         'dateFrom': rng['dateFrom'].strftime('%Y-%m-%d') if rng['dateFrom'] else None,
         'dateTo': rng['dateTo'].strftime('%Y-%m-%d') if rng['dateTo'] else None,
         'totalDays': rng['totalDays'],
+        'types': meta.get('types', {}),
+        'typeData': asyncio_run(load_type_sets(class_store)),
     })
 
 
@@ -659,10 +672,24 @@ def route_homework_update(path):
                 'required': required,
             }, 409)
 
-        result = asyncio_run(update_homework(class_store, resolved_id, target_date, subject_num, password))
+        # 作业种类（第四维）：给了 type_id 只记这一种，不给就按旧语义"整科已交"
+        raw_type = payload.get('type_id', payload.get('homework_type', payload.get('type')))
+        type_id = None
+        if raw_type is not None:
+            try:
+                type_id = int(raw_type)
+            except (TypeError, ValueError):
+                return json_response({'error': '无效的作业种类'}, 400)
+            if type_id < 0:
+                return json_response({'error': '无效的作业种类'}, 400)
+
+        result = asyncio_run(submit_homework(class_store, resolved_id, target_date, subject_num,
+                                             password, type_id))
         if result and result.get('saved'):
             return json_response({'message': '更新成功', 'student_id': resolved_id,
                                   'target_date': target_date, 'subject_id': subject_num,
+                                  'type_id': type_id,
+                                  'typesDone': result.get('typesDone', []),
                                   'changed': bool(result.get('changed'))})
         return json_response({'error': '保存失败'}, 500)
     except Exception as error:
@@ -811,12 +838,47 @@ def route_uuids_add(path):
     except ValueError as e:
         return json_response({'error': str(e)}, 400)
 
+    # 可选：绑卡同时登记作业（学科 + 可选作业种类）
+    submission = None
+    if payload.get('subject_id') is not None:
+        try:
+            subject_num = int(payload.get('subject_id'))
+        except (TypeError, ValueError):
+            return json_response({'error': '无效的学科ID'}, 400)
+        if subject_num < 0:
+            return json_response({'error': '无效的学科ID'}, 400)
+
+        target_date = payload.get('target_date') or datetime.now().strftime('%Y-%m-%d')
+        raw_type = payload.get('type_id', payload.get('homework_type', payload.get('type')))
+        type_id = None
+        if raw_type is not None:
+            try:
+                type_id = int(raw_type)
+            except (TypeError, ValueError):
+                return json_response({'error': '无效的作业种类'}, 400)
+            if type_id < 0:
+                return json_response({'error': '无效的作业种类'}, 400)
+
+        sid_num = normalize_uuid_student_id(student_id)
+        if sid_num is None:
+            return json_response({'error': '缺少或非法的 student_id'}, 400)
+        try:
+            password = request.headers.get('X-Password') or ''
+            submit = asyncio_run(submit_homework(class_store, sid_num, target_date,
+                                                 subject_num, password, type_id))
+        except Exception as error:
+            return json_response({'error': str(error)}, 400)
+        submission = {'submitted': bool(submit.get('saved')),
+                      'changed': bool(submit.get('changed')),
+                      'typesDone': submit.get('typesDone', [])}
+
     return json_response({
         'message': '已追加' if result['added'] else '已更新',
         'class_id': get_class_id(path),
         'added': result['added'],
         'count': result['count'],
         'uuids': result['uuids'],
+        'submission': submission,
     })
 
 
