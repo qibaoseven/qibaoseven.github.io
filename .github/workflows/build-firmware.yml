@@ -1,0 +1,54 @@
+name: build-firmware
+
+# 硬件分支一有新提交就自动编译 + 发到 Release（tag: hw-latest，每次覆盖资产）
+on:
+  push:
+    branches: [arduino-hardware-code]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: 配置 ESP8266 内核源并安装内核
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://arduino.esp8266.com/stable/package_esp8266com_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp8266:esp8266@3.1.2
+
+      - name: 安装依赖库
+        run: |
+          arduino-cli lib install "MFRC522@1.4.12"
+          arduino-cli lib install "Adafruit PN532@1.3.4"
+          arduino-cli lib install "LiquidCrystal I2C@1.1.2"
+          arduino-cli lib install "Adafruit BusIO@1.17.4"
+
+      - name: 编译（1M64 单文件）
+        run: |
+          mkdir -p build/homework
+          cp *.ino *.h *.cpp build/homework/
+          arduino-cli compile \
+            --fqbn esp8266:esp8266:generic:eesz=1M64 \
+            --output-dir out \
+            build/homework
+          cp out/homework.ino.bin openstu-v0.46-hw4-1M64.bin
+          ls -lh openstu-v0.46-hw4-1M64.bin
+
+      - name: 发布到 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: hw-latest
+          name: 固件 · arduino-hardware-code
+          prerelease: true
+          body: |
+            自动编译自 `arduino-hardware-code` 分支，提交 ${{ github.sha }}
+            烧录：`esptool.py --port <端口> write_flash 0x0 openstu-v0.46-hw4-1M64.bin`
+          files: openstu-v0.46-hw4-1M64.bin
