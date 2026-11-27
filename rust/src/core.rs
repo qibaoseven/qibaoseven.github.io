@@ -278,6 +278,220 @@ pub fn count_submitted(data: &HwData, date: &Date, required: &[usize]) -> usize 
     count
 }
 
+// ---------- 作业种类（第四维，侧车存储） ----------
+// 位压缩的主数据仍是 [天][学生][学科] 一 bit，不动老格式；
+// "种类"单独存在 homework_types（明文 JSON），形如：
+//   { "2026-11-27": { "23": { "0": [0,2] } } }
+// 含义：某天、某学生、某学科，已经交过的种类下标。
+// 学科 bit 的语义：该科所有种类都交齐了才置 1（没配种类时就等于旧行为）。
+
+pub fn types_of(meta: &Value, subject: usize) -> Vec<String> {
+    meta.get("types")
+        .and_then(|t| t.get(subject.to_string()))
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .map(|s| s.to_string())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub fn load_type_sets(store: &Store) -> Value {
+    let raw = store.get("homework_types").unwrap_or_default();
+    if raw.trim().is_empty() {
+        return json!({});
+    }
+    serde_json::from_str(&raw).unwrap_or_else(|_| json!({}))
+}
+
+pub fn save_type_sets(store: &Store, value: &Value) {
+    store.set(
+        "homework_types",
+        &serde_json::to_string(value).unwrap_or_else(|_| "{}".to_string()),
+    );
+}
+
+/// 取某天某生某科已交种类下标
+pub fn type_set_for(root: &Value, date: &str, sid: usize, subject: usize) -> Vec<usize> {
+    root.get(date)
+        .and_then(|d| d.get(sid.to_string()))
+        .and_then(|s| s.get(subject.to_string()))
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|x| x.as_i64()).filter(|n| *n >= 0).map(|n| n as usize).collect())
+        .unwrap_or_default()
+}
+
+/// 把种类下标写进侧车（合并）
+pub fn type_mark(root: &mut Value, date: &str, sid: usize, subject: usize, idxs: &[usize]) {
+    let mut list: Vec<usize> = type_set_for(root, date, sid, subject);
+    for i in idxs {
+        if !list.contains(i) {
+            list.push(*i);
+        }
+    }
+    list.sort_unstable();
+
+    if !root.is_object() {
+        *root = json!({});
+    }
+    let day = root
+        .as_object_mut()
+        .unwrap()
+        .entry(date.to_string())
+        .or_insert_with(|| json!({}));
+    if !day.is_object() {
+        *day = json!({});
+    }
+    let stu = day
+        .as_object_mut()
+        .unwrap()
+        .entry(sid.to_string())
+        .or_insert_with(|| json!({}));
+    if !stu.is_object() {
+        *stu = json!({});
+    }
+    stu.as_object_mut().unwrap().insert(
+        subject.to_string(),
+        Value::Array(list.iter().map(|n| json!(*n)).collect()),
+    );
+}
+
+/// 某天某科「一共有多少条要交」（学生数 × 该科种类数，未配种类算 1）
+pub fn required_total(meta: &Value, student_count: usize, required: &[usize]) -> usize {
+    let mut per_student = 0usize;
+    for s in required {
+        let n = types_of(meta, *s).len();
+        per_student += if n == 0 { 1 } else { n };
+    }
+    student_count * per_student
+}
+
+/// 已交条数（种类级；没配种类按学科 bit 算 1）
+pub fn count_submitted_typed(
+    data: &HwData,
+    meta: &Value,
+    type_sets: &Value,
+    date: &Date,
+    required: &[usize],
+) -> usize {
+    if data.is_empty() || required.is_empty() {
+        return 0;
+    }
+    let from = date_from_of(data);
+    let idx = (*date - from).num_days();
+    if idx < 0 || idx as usize >= data.len() {
+        return 0;
+    }
+    let date_key = iso_date(date);
+    let day = &data[idx as usize];
+    let mut count = 0;
+    for sid in 1..day.len() {
+        for s in required {
+            let types = types_of(meta, *s);
+            if types.is_empty() {
+                if *s < day[sid].len() && day[sid][*s] == 1 {
+                    count += 1;
+                }
+            } else {
+                count += type_set_for(type_sets, &date_key, sid, *s)
+                    .into_iter()
+                    .filter(|i| *i < types.len())
+                    .count();
+            }
+        }
+    }
+    count
+}
+
+// ---------- 登记一次提交（学科 + 可选种类） ----------
+// 供 /homework/update 与 /uuids/add 共用：绑卡时顺带登记，逻辑只写一遍。
+pub fn hw_submit(
+    store: &Store,
+    password: &str,
+    sid: usize,
+    subject_id: usize,
+    type_id: Option<usize>,
+    date_str: &str,
+) -> Result<(bool, Vec<usize>), String> {
+    let mut data = match hw_load(store, password) {
+        Ok(Some(d)) => d,
+        Ok(None) => vec![vec![vec![0u8; 1]; 2]],
+        Err(_) => return Err("密码错误".to_string()),
+    };
+    if data.is_empty() || data[0].is_empty() || data[0][0].is_empty() {
+        return Err("作业数据异常".to_string());
+    }
+
+    let target = match parse_date(date_str) {
+        Some(d) => d,
+        None => return Err("无效的日期".to_string()),
+    };
+    let from = date_from_of(&data);
+    let mut day_index = (target - from).num_days();
+    let actual_students = data[0].len();
+    let subjects = data[0][0].len();
+    if day_index < 0 {
+        for _ in 0..(-day_index) {
+            data.insert(0, vec![vec![0u8; subjects]; actual_students]);
+        }
+        day_index = 0;
+    } else if day_index as usize >= data.len() {
+        let extra = day_index as usize - data.len() + 1;
+        for _ in 0..extra {
+            data.push(vec![vec![0u8; subjects]; actual_students]);
+        }
+    }
+
+    let actual_students = data[0].len();
+    let subjects = data[0][0].len();
+    if sid == 0 || sid >= actual_students {
+        return Err(format!("无效的学生ID: {}", sid));
+    }
+    if subject_id >= subjects {
+        return Err(format!("无效的学科ID: {}", subject_id));
+    }
+
+    let was_set = data[day_index as usize][sid][subject_id] == 1;
+    let meta = match store.get("homework_meta") {
+        Some(raw) if !raw.is_empty() => serde_json::from_str::<Value>(&raw).unwrap_or_else(|_| json!({})),
+        _ => json!({}),
+    };
+    let subject_types = types_of(&meta, subject_id);
+    let mut type_sets = load_type_sets(store);
+    let mut changed = !was_set;
+
+    if subject_types.is_empty() {
+        data[day_index as usize][sid][subject_id] = 1;
+    } else {
+        let all: Vec<usize> = (0..subject_types.len()).collect();
+        let picked: Vec<usize> = match type_id {
+            Some(t) => {
+                if t >= subject_types.len() {
+                    return Err("作业种类超出范围".to_string());
+                }
+                vec![t]
+            }
+            None => all.clone(),
+        };
+        let before = type_set_for(&type_sets, date_str, sid, subject_id);
+        type_mark(&mut type_sets, date_str, sid, subject_id, &picked);
+        let after = type_set_for(&type_sets, date_str, sid, subject_id);
+        changed = after.len() > before.len() || !was_set;
+        let done_all = all.iter().all(|i| after.contains(i));
+        data[day_index as usize][sid][subject_id] = if done_all { 1 } else { 0 };
+    }
+
+    if !hw_save(store, &data, password) {
+        return Err("保存失败".to_string());
+    }
+    save_type_sets(store, &type_sets);
+
+    Ok((changed, type_set_for(&type_sets, date_str, sid, subject_id)))
+}
+
 // ---------- UID ----------
 /// UTF-8 字符数（对齐 Python 的 len(str)）
 pub fn utf8_len(s: &str) -> usize {

@@ -93,6 +93,34 @@ pub fn route_homework_init(req: &Request, st: &AppState) -> Response {
         return Response::error("该班级已初始化作业系统,如需重新初始化请先删除数据", 400, None);
     }
 
+    // 作业种类（可选）：{ "0": ["练习与测试", "试卷"] }
+    let mut types_map = Map::new();
+    if let Some(Value::Object(m)) = body.get("types") {
+        for (k, v) in m {
+            let subj: i64 = match k.trim().parse() {
+                Ok(n) => n,
+                Err(_) => continue,
+            };
+            if subj < 0 || subj >= subject_count {
+                continue;
+            }
+            if let Value::Array(items) = v {
+                let mut names: Vec<Value> = Vec::new();
+                for it in items {
+                    if let Some(s) = it.as_str() {
+                        let t = s.trim();
+                        if !t.is_empty() && !names.iter().any(|x| x.as_str() == Some(t)) {
+                            names.push(json!(t));
+                        }
+                    }
+                }
+                if !names.is_empty() {
+                    types_map.insert(subj.to_string(), Value::Array(names));
+                }
+            }
+        }
+    }
+
     let start = match body.get("start_date").and_then(|v| v.as_str()) {
         Some(s) => parse_date(s).unwrap_or_else(today_local),
         None => today_local(),
@@ -109,10 +137,12 @@ pub fn route_homework_init(req: &Request, st: &AppState) -> Response {
         "studentCount": student_count,
         "subjectCount": subject_count,
         "subjectNames": Value::Object(normalized.clone()),
+        "types": Value::Object(types_map.clone()),
         "initializedAt": utc_stamp(),
         "startDate": iso_date(&start),
     });
     store.set("homework_meta", &serde_json::to_string(&meta).unwrap_or_default());
+    store.delete("homework_types");
 
     Response::json(
         &json!({
@@ -122,6 +152,7 @@ pub fn route_homework_init(req: &Request, st: &AppState) -> Response {
                 "studentCount": student_count,
                 "subjectCount": subject_count,
                 "subjectNames": Value::Object(normalized),
+                "types": Value::Object(types_map),
                 "actualStudents": actual_students,
                 "startDate": iso_date(&start),
             },
@@ -194,23 +225,25 @@ pub fn route_homework_required(req: &Request, st: &AppState) -> Response {
 
     let meta = load_meta(&store);
     let required = required_for_date(&store, &date_str);
+    let student_count = meta.get("studentCount").and_then(|v| v.as_i64()).unwrap_or(0);
     let mut submitted = 0usize;
     if !required.is_empty() {
         if let Ok(Some(data)) = hw_load(&store, &creds.password) {
-            submitted = count_submitted(&data, &date, &required);
+            let type_sets = load_type_sets(&store);
+            submitted = count_submitted_typed(&data, &meta, &type_sets, &date, &required);
         }
     }
 
-    let student_count = meta.get("studentCount").and_then(|v| v.as_i64()).unwrap_or(0);
     Response::json(
         &json!({
             "class_id": class_id,
             "date": date_str,
             "required": required.iter().map(|n| json!(*n)).collect::<Vec<Value>>(),
             "subjectNames": meta.get("subjectNames").cloned().unwrap_or_else(|| json!({})),
+            "types": meta.get("types").cloned().unwrap_or_else(|| json!({})),
             "studentCount": student_count,
             "submitted": submitted,
-            "total": student_count as usize * required.len(),
+            "total": required_total(&meta, student_count as usize, &required),
         }),
         200,
     )
@@ -237,6 +270,9 @@ pub fn route_homework_get(req: &Request, st: &AppState) -> Response {
 
     let mut out = hw_date_range(&data);
     out["data"] = json!(data);
+    let meta = load_meta(&store);
+    out["types"] = meta.get("types").cloned().unwrap_or_else(|| json!({}));
+    out["typeData"] = load_type_sets(&store);
     Response::json(&out, 200)
 }
 
@@ -464,50 +500,41 @@ pub fn route_homework_update(req: &Request, st: &AppState) -> Response {
         );
     }
 
-    let mut data = match hw_load(&store, &creds.password) {
-        Ok(Some(d)) => d,
-        Ok(None) => vec![vec![vec![0u8; 1]; 2]],
-        Err(_) => return Response::error("密码错误", 401, None),
-    };
-    if data.is_empty() || data[0].is_empty() || data[0][0].is_empty() {
-        return Response::error("作业数据异常", 500, None);
-    }
-
-    let target = match parse_date(target_date) {
-        Some(d) => d,
-        None => return Response::error("无效的日期", 400, None),
-    };
-    let from = date_from_of(&data);
-    let mut day_index = (target - from).num_days();
-
-    let actual_students = data[0].len();
-    let subjects = data[0][0].len();
-    if day_index < 0 {
-        for _ in 0..(-day_index) {
-            data.insert(0, vec![vec![0u8; subjects]; actual_students]);
+    let type_id: Option<usize> = match body
+        .get("type_id")
+        .or_else(|| body.get("homework_type"))
+        .or_else(|| body.get("type"))
+    {
+        None | Some(Value::Null) => None,
+        Some(v) => {
+            let n = if let Some(n) = v.as_i64() {
+                n
+            } else if let Some(s) = v.as_str() {
+                match s.trim().parse::<i64>() {
+                    Ok(n) => n,
+                    Err(_) => return Response::error("无效的作业种类", 400, None),
+                }
+            } else {
+                return Response::error("无效的作业种类", 400, None);
+            };
+            if n < 0 {
+                return Response::error("无效的作业种类", 400, None);
+            }
+            Some(n as usize)
         }
-        day_index = 0;
-    } else if day_index as usize >= data.len() {
-        let extra = day_index as usize - data.len() + 1;
-        for _ in 0..extra {
-            data.push(vec![vec![0u8; subjects]; actual_students]);
-        }
-    }
+    };
 
-    let actual_students = data[0].len();
-    let subjects = data[0][0].len();
-    if resolved == 0 || resolved >= actual_students {
-        return Response::error(&format!("无效的学生ID: {}", resolved), 400, None);
-    }
-    if subject_id < 0 || subject_id as usize >= subjects {
-        return Response::error(&format!("无效的学科ID: {}", subject_id), 400, None);
-    }
-
-    let was_set = data[day_index as usize][resolved][subject_id as usize] == 1;
-    data[day_index as usize][resolved][subject_id as usize] = 1;
-    if !hw_save(&store, &data, &creds.password) {
-        return Response::error("保存失败", 500, None);
-    }
+    let (changed, types_done) = match hw_submit(
+        &store,
+        &creds.password,
+        resolved,
+        subject_id as usize,
+        type_id,
+        target_date,
+    ) {
+        Ok(v) => v,
+        Err(msg) => return Response::error(&msg, 400, None),
+    };
 
     Response::json(
         &json!({
@@ -515,7 +542,9 @@ pub fn route_homework_update(req: &Request, st: &AppState) -> Response {
             "student_id": resolved,
             "target_date": target_date,
             "subject_id": subject_id,
-            "changed": !was_set,
+            "type_id": type_id,
+            "typesDone": types_done.iter().map(|n| json!(*n)).collect::<Vec<Value>>(),
+            "changed": changed,
         }),
         200,
     )

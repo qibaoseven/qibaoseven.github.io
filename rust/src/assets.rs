@@ -22,6 +22,7 @@ pub static ASSETS: &[Asset] = &[
     Asset { path: "/js/pages/gacha.js", mime: "application/javascript; charset=utf-8", bytes: include_bytes!("../../js/pages/gacha.js") },
     Asset { path: "/js/pages/gold.js", mime: "application/javascript; charset=utf-8", bytes: include_bytes!("../../js/pages/gold.js") },
     Asset { path: "/js/pages/group.js", mime: "application/javascript; charset=utf-8", bytes: include_bytes!("../../js/pages/group.js") },
+    Asset { path: "/js/pages/hardware.js", mime: "application/javascript; charset=utf-8", bytes: include_bytes!("../../js/pages/hardware.js") },
     Asset { path: "/js/pages/homework.js", mime: "application/javascript; charset=utf-8", bytes: include_bytes!("../../js/pages/homework.js") },
     Asset { path: "/js/pages/journal.js", mime: "application/javascript; charset=utf-8", bytes: include_bytes!("../../js/pages/journal.js") },
     Asset { path: "/js/pages/logs.js", mime: "application/javascript; charset=utf-8", bytes: include_bytes!("../../js/pages/logs.js") },

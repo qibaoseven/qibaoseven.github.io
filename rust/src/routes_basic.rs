@@ -2,7 +2,7 @@
 use serde_json::{json, Map, Value};
 
 use crate::app::*;
-use crate::core::parse_uid;
+use crate::core::{hw_submit, iso_date, parse_uid, today_local};
 use crate::crypto;
 use crate::http::{url_encode_utf8, Request, Response};
 use crate::template::TEMPLATE_TEXT;
@@ -285,6 +285,49 @@ pub fn route_uuids_add(req: &Request, st: &AppState) -> Response {
     store.set("uuids", &serde_json::to_string(&ordered).unwrap_or_default());
     let count = ordered.as_object().map(|m| m.len()).unwrap_or(0);
 
+    // 可选：绑卡同时登记作业（学科 + 可选作业种类）
+    let mut submission = Value::Null;
+    if let Some(v) = body.get("subject_id").filter(|v| !v.is_null()) {
+        let subject_id: i64 = if let Some(n) = v.as_i64() {
+            n
+        } else if let Some(s) = v.as_str() {
+            s.trim().parse::<i64>().unwrap_or(-1)
+        } else {
+            -1
+        };
+        if subject_id < 0 {
+            return Response::error("无效的学科ID", 400, None);
+        }
+        let target_date = body
+            .get("target_date")
+            .and_then(|x| x.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| iso_date(&today_local()));
+        let type_id = body
+            .get("type_id")
+            .and_then(|x| x.as_i64())
+            .filter(|n| *n >= 0)
+            .map(|n| n as usize);
+        match hw_submit(
+            &store,
+            &creds.password,
+            sid_num as usize,
+            subject_id as usize,
+            type_id,
+            &target_date,
+        ) {
+            Ok((changed, done)) => {
+                submission = json!({
+                    "submitted": true,
+                    "changed": changed,
+                    "typesDone": done.iter().map(|n| json!(*n)).collect::<Vec<Value>>(),
+                })
+            }
+            Err(msg) => return Response::error(&msg, 400, None),
+        }
+    }
+
     Response::json(
         &json!({
             "message": if added { "已追加" } else { "已更新" },
@@ -292,6 +335,7 @@ pub fn route_uuids_add(req: &Request, st: &AppState) -> Response {
             "added": added,
             "count": count,
             "uuids": ordered,
+            "submission": submission,
         }),
         200,
     )
