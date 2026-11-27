@@ -48,6 +48,28 @@ inline Response routeHomeworkInit(const Request& req, const AppState& st) {
   if (existing && !existing->empty())
     return jsonError("该班级已初始化作业系统,如需重新初始化请先删除数据", 400);
 
+  // 作业种类（可选）：{ "0": ["练习与测试", "试卷"] }
+  json typesMap = json::object();
+  if (body.contains("types") && body["types"].is_object()) {
+    for (auto it = body["types"].begin(); it != body["types"].end(); ++it) {
+      int idx = -1;
+      try { idx = std::stoi(it.key()); } catch (...) { continue; }
+      if (idx < 0 || idx >= subjectCount) continue;
+      const json& arr = it.value();
+      if (!arr.is_array()) continue;
+      json names = json::array();
+      for (const auto& x : arr) {
+        if (!x.is_string()) continue;
+        std::string t = trimStr(x.get<std::string>());
+        if (t.empty()) continue;
+        bool dup = false;
+        for (const auto& y : names) if (y.is_string() && y.get<std::string>() == t) dup = true;
+        if (!dup) names.push_back(t);
+      }
+      if (!names.empty()) typesMap[std::to_string(idx)] = names;
+    }
+  }
+
   Date start = todayLocal();
   if (body.contains("start_date") && body["start_date"].is_string()) {
     Date parsed;
@@ -63,6 +85,7 @@ inline Response routeHomeworkInit(const Request& req, const AppState& st) {
   meta["studentCount"] = studentCount;
   meta["subjectCount"] = subjectCount;
   meta["subjectNames"] = normalized;
+  meta["types"] = typesMap;
   time_t t = time(nullptr);
   struct tm g;
 #ifdef _WIN32
@@ -76,6 +99,7 @@ inline Response routeHomeworkInit(const Request& req, const AppState& st) {
   meta["initializedAt"] = stamp;
   meta["startDate"] = isoDate(start);
   store.set("homework_meta", meta.dump(-1, ' ', false));
+  store.set("homework_types", "{}");
 
   json out, outMeta;
   out["success"] = true;
@@ -83,6 +107,7 @@ inline Response routeHomeworkInit(const Request& req, const AppState& st) {
   outMeta["studentCount"] = studentCount;
   outMeta["subjectCount"] = subjectCount;
   outMeta["subjectNames"] = normalized;
+  outMeta["types"] = typesMap;
   outMeta["actualStudents"] = actualStudents;
   outMeta["startDate"] = isoDate(start);
   out["meta"] = outMeta;
@@ -140,7 +165,10 @@ inline Response routeHomeworkRequired(const Request& req, const AppState& st) {
   if (!required.empty()) {
     HwData data;
     try {
-      if (hwLoad(store, password, data)) submitted = countSubmitted(data, parsed, required);
+      if (hwLoad(store, password, data)) {
+        json typeSets = loadTypeSets(store);
+        submitted = countSubmittedTyped(data, meta, typeSets, parsed, required);
+      }
     } catch (...) { submitted = 0; }
   }
 
@@ -150,9 +178,10 @@ inline Response routeHomeworkRequired(const Request& req, const AppState& st) {
   out["date"] = date;
   out["required"] = required;
   out["subjectNames"] = meta.value("subjectNames", json::object());
+  out["types"] = meta.value("types", json::object());
   out["studentCount"] = studentCount;
   out["submitted"] = submitted;
-  out["total"] = studentCount * (int)required.size();
+  out["total"] = requiredTotal(meta, studentCount, required);
   return jsonResponse(out);
 }
 
@@ -174,6 +203,11 @@ inline Response routeHomeworkGet(const Request& req, const AppState& st) {
 
   json out = hwDateRange(data);
   out["data"] = data;
+  json meta = json::object();
+  auto metaRaw = store.get("homework_meta");
+  if (metaRaw && !metaRaw->empty()) { try { meta = json::parse(*metaRaw); } catch (...) {} }
+  out["types"] = meta.value("types", json::object());
+  out["typeData"] = loadTypeSets(store);
   // 键顺序与 Python 不同无所谓，前端按字段取值
   return jsonResponse(out);
 }
@@ -378,17 +412,26 @@ inline Response routeHomeworkUpdate(const Request& req, const AppState& st) {
   if (subjectId < 0 || subjectId >= subjects)
     return jsonError("无效的学科ID: " + std::to_string(subjectId), 400);
 
-  bool wasSet = data[dayIndex][resolvedId][subjectId] == 1;
-  data[dayIndex][resolvedId][subjectId] = 1;
-  bool saved = hwSave(store, data, password);
-  if (!saved) return jsonError("保存失败", 500);
+  // 作业种类（第四维）：给了 type_id 只记这一种，不给按旧语义"整科已交"
+  int typeId = -1;
+  if (body.contains("type_id") && !body["type_id"].is_null()) typeId = body["type_id"].is_number_integer() ? body["type_id"].get<int>() : -1;
+  else if (body.contains("homework_type") && body["homework_type"].is_number_integer()) typeId = body["homework_type"].get<int>();
+  if (typeId < -1) return jsonError("无效的作业种类", 400);
+
+  bool changed = false;
+  std::vector<int> typesDone;
+  std::string err;
+  if (!hwSubmit(store, password, resolvedId, subjectId, typeId, targetDate, changed, typesDone, err))
+    return jsonError(err, 400);
 
   json out;
   out["message"] = "更新成功";
   out["student_id"] = resolvedId;
   out["target_date"] = targetDate;
   out["subject_id"] = subjectId;
-  out["changed"] = !wasSet;
+  out["type_id"] = typeId < 0 ? json(nullptr) : json(typeId);
+  out["typesDone"] = typesDone;
+  out["changed"] = changed;
   return jsonResponse(out);
 }
 

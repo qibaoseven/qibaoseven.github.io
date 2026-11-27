@@ -351,12 +351,44 @@ inline Response routeUuidsAdd(const Request& req, const AppState& st) {
   for (auto& kv : byId) ordered[std::to_string(kv.first)] = kv.second;
   store.set("uuids", compactDump(ordered));
 
+  // 可选：绑卡同时登记作业（学科 + 可选作业种类）
+  json submission = json(nullptr);
+  if (body.contains("subject_id") && !body["subject_id"].is_null()) {
+    int subjectId = -1;
+    if (body["subject_id"].is_number_integer()) subjectId = body["subject_id"].get<int>();
+    else if (body["subject_id"].is_string()) {
+      try { subjectId = std::stoi(body["subject_id"].get<std::string>()); } catch (...) {}
+    }
+    if (subjectId < 0) return jsonError("无效的学科ID", 400);
+
+    std::string targetDate = isoDate(todayLocal());
+    if (body.contains("target_date") && body["target_date"].is_string() &&
+        !body["target_date"].get<std::string>().empty())
+      targetDate = body["target_date"].get<std::string>();
+
+    int typeId = -1;
+    if (body.contains("type_id") && body["type_id"].is_number_integer())
+      typeId = body["type_id"].get<int>();
+
+    bool changed = false;
+    std::vector<int> typesDone;
+    std::string err;
+    if (!hwSubmit(store, password, (int)sidNum, subjectId, typeId, targetDate, changed, typesDone, err))
+      return jsonError(err, 400);
+
+    submission = json::object();
+    submission["submitted"] = true;
+    submission["changed"] = changed;
+    submission["typesDone"] = typesDone;
+  }
+
   json out;
   out["message"] = added ? "已追加" : "已更新";
   out["class_id"] = classId;
   out["added"] = added;
   out["count"] = ordered.size();
   out["uuids"] = ordered;
+  out["submission"] = submission;
   return jsonResponse(out);
 }
 

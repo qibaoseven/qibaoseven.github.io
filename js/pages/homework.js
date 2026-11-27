@@ -194,7 +194,262 @@ function guessTrendSid() {
     return (me && me.student_id && !isNaN(+me.student_id)) ? Number(me.student_id) : 1;
 }
 
-// ---------- 渲染:未初始化 ----------
+// ---------- 初始化页: 年级预设 / 作业种类预设 ----------
+// 年级只用来"勾出该年级的科目"，本身不写进数据；真正存进作业系统的是科目表
+const HW_GRADE_PRESETS = {
+    g12: { label: '一 ~ 二年级', subjects: ['语文', '数学'] },
+    g36: { label: '三 ~ 六年级', subjects: ['语文', '数学', '英语', '科学'] },
+    g7:  { label: '七年级', subjects: ['语文', '数学', '英语', '政治', '历史', '地理', '生物'] },
+    g8:  { label: '八年级', subjects: ['语文', '数学', '英语', '政治', '历史', '地理', '物理', '生物'] },
+    g9:  { label: '九年级', subjects: ['语文', '数学', '英语', '政治', '历史', '物理', '化学'] },
+    gh:  { label: '高一及以上', subjects: ['语文', '数学', '英语', '政治', '历史', '地理', '物理', '化学', '生物'] },
+    more:{ label: '更多（手动选择）', subjects: [] }
+};
+
+// 班级里可能出现的所有科目，供"更多（手动选择）"勾选
+const HW_ALL_SUBJECTS = ['语文', '数学', '英语', '科学', '政治', '历史', '地理', '生物', '物理', '化学', '道德与法治', '信息技术', '美术', '音乐', '体育'];
+
+// 每科默认提供的作业种类（全部默认不勾选）
+const HW_TYPE_DEFAULTS = {
+    '语文': ['练习与测试', '基础训练', '试卷', '练习', '听（默）写', '抄写', '日（周）记', '作文', '讲义'],
+    '数学': ['名校课堂', '基础训练', '试卷', '计算题', '错题本', '讲义'],
+    '英语': ['基础训练', 'A计划', '试卷', '听（默）写', '抄写', '报纸', '讲义'],
+    '政治': ['基础训练', '框架图', '试卷'],
+    '历史': ['基础训练', '框架图', '试卷'],
+    '地理': ['基础训练', '试卷'],
+    '生物': ['基础训练', '试卷'],
+    '物理': ['基础训练', '试卷', '作图'],
+    '化学': ['基础训练', '试卷', '作图'],
+    '科学': ['基础训练', '试卷', '实验报告'],
+    '道德与法治': ['基础训练', '试卷'],
+    '信息技术': ['上机练习', '作品'],
+    '美术': ['绘画作品', '手工作品'],
+    '音乐': ['演唱练习', '欣赏记录'],
+    '体育': ['锻炼打卡']
+};
+
+// 各科都可能出现、但不在上面默认列表里的种类（同样默认不勾选）
+const HW_TYPE_GENERIC = ['预习', '背诵', '朗读', '阅读打卡', '读书笔记', '摘抄', '小练笔', '手抄报',
+    '思维导图', '错题整理', '口算', '导学案', '实验报告', '观察记录', '知识点背诵', '填图/绘图',
+    '口语训练', '绘本阅读', '研究报告', '调查报告', '书法', '古诗配画', '分层练习', '专项练习', '课本练习'];
+
+// 班级里的学号（按数值排序，排除 0 号机器人）
+function hwStudentIds() {
+    const scores = (window.appData && window.appData.scores) || {};
+    return Object.keys(scores)
+        .filter(id => id !== '0' && /^\d+$/.test(id) && +id > 0)
+        .map(id => +id)
+        .sort((a, b) => a - b);
+}
+
+// 默认学生数：从 1 开始数，数到第一个断档前的最后一个连续整数
+function hwDefaultStudentCount(ids) {
+    ids = ids || hwStudentIds();
+    if (!ids.length) return 0;
+    const set = new Set(ids);
+    let n = 0;
+    while (set.has(n + 1)) n++;
+    return n || ids.length;
+}
+
+let hwInitState = null;
+
+function hwInitEnsureState() {
+    if (hwInitState) return hwInitState;
+    const ids = hwStudentIds();
+    const maxId = ids.length ? Math.max(ids[ids.length - 1], ids.length) : 0;
+    hwInitState = {
+        ids,
+        maxId,
+        studentCount: hwDefaultStudentCount(ids),
+        grade: 'g36',
+        startDate: '',
+        subjects: []          // [{name, checked, types:[{name, checked}]}]
+    };
+    HW_GRADE_PRESETS[hwInitState.grade].subjects.forEach(name => hwInitAddSubject(name));
+    return hwInitState;
+}
+
+function hwInitAddSubject(name) {
+    name = String(name || '').trim();
+    if (!name) return;
+    const st = hwInitEnsureState();
+    if (st.subjects.some(s => s.name === name)) return;
+    const defaults = (HW_TYPE_DEFAULTS[name] || []).map(n => ({ name: n, checked: false }));
+    st.subjects.push({ name, checked: true, types: defaults });
+}
+
+function hwInitRemoveSubject(name) {
+    const st = hwInitEnsureState();
+    st.subjects = st.subjects.filter(s => s.name !== name);
+}
+
+function hwInitTypesFor(subject) {
+    const st = hwInitEnsureState();
+    const subj = st.subjects.find(s => s.name === subject);
+    return subj ? subj.types : [];
+}
+
+function hwInitTypeOptions(subject) {
+    // 默认种类 + 通用种类（去掉重名），全部默认不勾选
+    const subj = hwInitEnsureState().subjects.find(s => s.name === subject);
+    if (!subj) return [];
+    const seen = new Set(subj.types.map(t => t.name));
+    const generic = HW_TYPE_GENERIC.filter(n => !seen.has(n));
+    return subj.types.map(t => ({ name: t.name, checked: t.checked }))
+        .concat(generic.map(n => ({ name: n, checked: false, generic: true })));
+}
+
+function hwInitSetGrade(grade) {
+    const st = hwInitEnsureState();
+    st.grade = grade;
+    const preset = HW_GRADE_PRESETS[grade] || HW_GRADE_PRESETS.more;
+    // 切年级只替换"预设科目"，手动加过的科目保留
+    const manual = st.subjects.filter(s => !Object.values(HW_GRADE_PRESETS)
+        .some(p => p.subjects.includes(s.name)) && s.addedByUser);
+    st.subjects = [];
+    preset.subjects.forEach(name => hwInitAddSubject(name));
+    manual.forEach(s => st.subjects.push(s));
+    if (grade === 'more') {
+        // 更多：把班级里出现过的常见科目全部列出来（不勾选）
+        HW_ALL_SUBJECTS.forEach(name => {
+            if (!st.subjects.some(s => s.name === name)) {
+                const defaults = (HW_TYPE_DEFAULTS[name] || []).map(n => ({ name: n, checked: false }));
+                st.subjects.push({ name, checked: false, types: defaults });
+            }
+        });
+    }
+    hwRefreshInit();
+}
+
+function hwInitToggleSubject(name, checked) {
+    const st = hwInitEnsureState();
+    const subj = st.subjects.find(s => s.name === name);
+    if (subj) subj.checked = !!checked;
+    hwRefreshInit();
+}
+
+function hwInitToggleType(subject, type, checked) {
+    const st = hwInitEnsureState();
+    const subj = st.subjects.find(s => s.name === subject);
+    if (!subj) return;
+    let item = subj.types.find(t => t.name === type);
+    if (!item) {
+        item = { name: type, checked: false };
+        subj.types.push(item);
+    }
+    item.checked = !!checked;
+    hwRefreshInit();
+}
+
+function hwInitAddType(subject) {
+    const input = document.getElementById('hwAddType_' + hwInitKey(subject));
+    const value = input ? input.value.trim() : '';
+    if (!value) { alert('请输入要添加的作业种类名称'); return; }
+    hwInitToggleType(subject, value, true);
+}
+
+function hwInitAddCustomSubject() {
+    const input = document.getElementById('hwAddSubjectInput');
+    const value = input ? input.value.trim() : '';
+    if (!value) { alert('请输入科目名称'); return; }
+    hwInitAddSubject(value);
+    const st = hwInitEnsureState();
+    const subj = st.subjects.find(s => s.name === value);
+    if (subj) subj.addedByUser = true;
+    if (input) input.value = '';
+    hwRefreshInit();
+}
+
+function hwInitKey(name) {
+    return String(name).replace(/[^\w\u4e00-\u9fa5]/g, '_');
+}
+
+// 只重绘初始化卡片，不整页刷新（保留已填状态）
+function hwRefreshInit() {
+    const card = document.getElementById('hwInitCard');
+    if (!card) return;
+    card.innerHTML = hwInitCardHtml();
+}
+
+function hwInitCardHtml() {
+    const st = hwInitEnsureState();
+    const maxOption = Math.max(st.maxId, st.studentCount, 1);
+
+    const countOptions = [];
+    for (let i = 1; i <= maxOption; i++) {
+        countOptions.push(`<option value="${i}" ${i === st.studentCount ? 'selected' : ''}>${i} 人</option>`);
+    }
+
+    const gradeOptions = Object.entries(HW_GRADE_PRESETS).map(([k, v]) =>
+        `<option value="${k}" ${k === st.grade ? 'selected' : ''}>${v.label}</option>`).join('');
+
+    const subjectChips = st.subjects.map(s => `
+        <label style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;margin:4px;border:1px solid ${s.checked ? '#ff8f4e' : '#e5e5e5'};border-radius:20px;background:${s.checked ? '#fff4ec' : '#fff'};cursor:pointer;">
+            <input type="checkbox" ${s.checked ? 'checked' : ''} onchange="window.homework.initToggleSubject('${s.name}', this.checked)">
+            <span>${escapeHtml(s.name)}</span>
+        </label>`).join('');
+
+    const typePanels = st.subjects.filter(s => s.checked).map(s => {
+        const options = hwInitTypeOptions(s.name);
+        const items = options.map(t => `
+            <label style="display:inline-flex;align-items:center;gap:5px;padding:4px 9px;margin:3px;border:1px solid #eee;border-radius:14px;background:${t.checked ? '#fff4ec' : '#fafafa'};cursor:pointer;font-size:13px;">
+                <input type="checkbox" ${t.checked ? 'checked' : ''}
+                    onchange="window.homework.initToggleType('${s.name}', '${t.name.replace(/'/g, "\\'")}', this.checked)">
+                <span>${escapeHtml(t.name)}</span>
+            </label>`).join('');
+        return `<div style="border:1px dashed #ffd8bd;border-radius:10px;padding:10px 12px;margin:10px 0;">
+            <div style="font-weight:600;color:#ff8f4e;margin-bottom:6px;">${escapeHtml(s.name)} · 作业种类
+                <span style="font-weight:400;color:#aaa;font-size:12px;">（选中哪几种，就算哪几种；全不选 = 该科只算一整个"作业"）</span>
+            </div>
+            <div>${items}</div>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+                <input id="hwAddType_${hwInitKey(s.name)}" placeholder="要添加的种类，如：单元卷"
+                    style="flex:1;padding:6px 10px;border:1px solid #ddd;border-radius:8px;">
+                <button class="btn" style="padding:6px 12px;" onclick="window.homework.initAddType('${s.name}')">➕ 添加</button>
+            </div>
+        </div>`;
+    }).join('') || '<p style="color:#999;">请先在上方勾选科目。</p>';
+
+    return `
+        <h2 class="card-title">📚 创建作业文件</h2>
+        <p style="color:#888;">先定学生数、科目，再给每个科目配上作业种类。种类全不勾选也可以，那就按"一科一个整作业"记。</p>
+
+        <div style="display:flex;flex-wrap:wrap;gap:16px;margin:18px 0;align-items:end;">
+            <div>
+                <label style="display:block;margin-bottom:4px;">学生总数</label>
+                <select id="hwStuCount" onchange="window.homework.initSetStudentCount(this.value)"
+                    style="padding:10px;border:1px solid #ddd;border-radius:8px;min-width:110px;">${countOptions.join('')}</select>
+                <div style="font-size:12px;color:#aaa;margin-top:4px;">默认 = 从 1 开始连续到最后的那一个</div>
+            </div>
+            <div>
+                <label style="display:block;margin-bottom:4px;">年级（只用来勾科目，不入库）</label>
+                <select onchange="window.homework.initSetGrade(this.value)"
+                    style="padding:10px;border:1px solid #ddd;border-radius:8px;min-width:150px;">${gradeOptions}</select>
+            </div>
+            <div>
+                <label style="display:block;margin-bottom:4px;">起始日期（可选）</label>
+                <input type="date" id="hwStartDate" value="${st.startDate || ''}"
+                    style="padding:9px;border:1px solid #ddd;border-radius:8px;">
+            </div>
+        </div>
+
+        <h3 style="margin:14px 0 6px;">科目 <span style="font-size:12px;color:#aaa;font-weight:400;">（这里选的是这个班可能出现的科目，不是今天要交的）</span></h3>
+        <div id="hwSubjectChips">${subjectChips || '<span style="color:#999;">还没有科目，去下面加一个</span>'}</div>
+        <div style="display:flex;gap:8px;margin-top:10px;max-width:420px;">
+            <input id="hwAddSubjectInput" placeholder="手动添加科目，如：心理"
+                style="flex:1;padding:8px 10px;border:1px solid #ddd;border-radius:8px;">
+            <button class="btn" onclick="window.homework.initAddSubject()">➕ 添加科目</button>
+        </div>
+
+        <h3 style="margin:20px 0 6px;">作业种类</h3>
+        <div id="hwTypePanels">${typePanels}</div>
+
+        <div style="margin-top:22px;">
+            <button class="btn btn-primary" onclick="window.homework.submitInit()">✅ 创建作业文件</button>
+        </div>`;
+}
+
 function renderNotInitialized() {
     if (!isHomeworkManager()) {
         return `<div class="content-card">
@@ -202,24 +457,9 @@ function renderNotInitialized() {
             <p>作业系统尚未初始化。请联系管理员创建作业。</p>
         </div>`;
     }
-    const stuCount = window.appData && window.appData.scores ? Object.keys(window.appData.scores).filter(id => id !== '0').length : 0;
-    // 从班级实时提取学科建议(若 scores 无默认列则给常见学科)
-    const subjectNames = localStorage.getItem('studentos_homework_subjects') || '{"0":"语文","1":"数学","2":"英语","3":"科学"}';
-    return `<div class="content-card">
-        <h2 class="card-title">📚 创建作业文件</h2>
-        <p style="color:#888;">作业系统尚未初始化，请先创建作业文件。</p>
-        <div style="margin:20px 0; max-width:420px;">
-            <label>学生人数：</label>
-            <input type="number" id="hwStuCount" value="${stuCount}" min="1" placeholder="学生人数"
-                style="width:100%; padding:10px; margin:8px 0; border:1px solid #ddd; border-radius:8px;">
-            <label>学科列表（JSON 格式，键从 0 开始）：</label>
-            <textarea id="hwSubjectsText" rows="4"
-                style="width:100%; padding:10px; margin:8px 0; border:1px solid #ddd; border-radius:8px;">${escapeHtml(subjectNames)}</textarea>
-            <label>起始日期（可选，默认今天）：</label>
-            <input type="date" id="hwStartDate" style="width:100%; padding:10px; margin:8px 0; border:1px solid #ddd; border-radius:8px;">
-            <button class="btn btn-primary" onclick="window.homework.submitInit()">✅ 创建作业文件</button>
-        </div>
-    </div>`;
+    // 每次进入都重建状态（学生名册可能刚改过）
+    hwInitState = null;
+    return `<div class="content-card" id="hwInitCard">${hwInitCardHtml()}</div>`;
 }
 
 // ---------- 渲染:主页面 ----------
@@ -629,28 +869,39 @@ function renderRankBlock(full, startDate, subjectCount) {
 }
 
 // ---------- 管理员: 创建作业文件 ----------
+function initSetStudentCount(value) {
+    const st = hwInitEnsureState();
+    const n = parseInt(value, 10);
+    if (n && n > 0) st.studentCount = n;
+}
+
+function initAddSubject() {
+    hwInitAddCustomSubject();
+}
+
 async function submitInit() {
+    const st = hwInitEnsureState();
     const countEl = document.getElementById('hwStuCount');
-    const subjEl = document.getElementById('hwSubjectsText');
     const startEl = document.getElementById('hwStartDate');
-    const stuCount = parseInt(countEl ? countEl.value : '', 10);
-    let subjectNames;
-    try {
-        subjectNames = JSON.parse(subjEl ? subjEl.value : '{}');
-    } catch (e) {
-        alert('学科列表不是合法的 JSON，请检查格式，例如：{"0":"语文","1":"数学"}');
-        return;
-    }
-    if (!stuCount || stuCount < 1) { alert('请填写有效的学生人数'); return; }
-    if (!subjectNames || typeof subjectNames !== 'object' || Object.keys(subjectNames).length === 0) {
-        alert('请至少填写一个学科'); return;
-    }
-    localStorage.setItem('studentos_homework_subjects', JSON.stringify(subjectNames));
+    const stuCount = parseInt((countEl && countEl.value) || st.studentCount, 10);
+    const checked = st.subjects.filter(s => s.checked);
+
+    if (!stuCount || stuCount < 1) { alert('请选择有效的学生人数'); return; }
+    if (!checked.length) { alert('请至少勾选一个科目'); return; }
+
+    const subjectNames = {};
+    const types = {};
+    checked.forEach((s, i) => {
+        subjectNames[i] = s.name;
+        const picked = s.types.filter(t => t.checked).map(t => t.name);
+        if (picked.length) types[i] = picked;
+    });
 
     const body = {
         student_count: stuCount,
-        subject_count: Object.keys(subjectNames).length,
-        subject_names: subjectNames
+        subject_count: checked.length,
+        subject_names: subjectNames,
+        types: types
     };
     if (startEl && startEl.value) body.start_date = startEl.value;
 
@@ -702,12 +953,36 @@ async function showManage() {
             <div><label>日期</label><br>
                 <input type="date" id="hwRecDate" value="${fmtDate(new Date())}" style="padding:8px;border:1px solid #ddd;border-radius:8px;"></div>
             <div><label>学科</label><br>
-                <select id="hwRecSubject" style="padding:8px;border:1px solid #ddd;border-radius:8px;">
+                <select id="hwRecSubject" onchange="window.homework.refreshRecTypes()" style="padding:8px;border:1px solid #ddd;border-radius:8px;">
                     ${Object.entries(subjectNames).map(([k, v]) => `<option value="${k}">${escapeHtml(v)}</option>`).join('')}
+                </select></div>
+            <div><label>作业种类</label><br>
+                <select id="hwRecType" style="padding:8px;border:1px solid #ddd;border-radius:8px;min-width:140px;">
+                    ${renderRecTypeOptions(meta, 0)}
                 </select></div>
             <div><button class="btn btn-primary" onclick="window.homework.submitRecord()">📌 标记已提交</button></div>
         </div>
+        <div style="font-size:12px;color:#999;">种类留空 = 整科记为已交（旧语义）；选了具体种类就只记这一种。</div>
     </div>`;
+}
+
+// 提交登记：按当前选中的学科，列出它配置的种类
+function renderRecTypeOptions(meta, subjectId) {
+    const types = (meta && meta.types) || {};
+    const list = types[String(subjectId)] || types[subjectId] || [];
+    const options = ['<option value="">（整科全部）</option>'];
+    (Array.isArray(list) ? list : []).forEach((name, idx) => {
+        options.push(`<option value="${idx}">${escapeHtml(String(name))}</option>`);
+    });
+    return options.join('');
+}
+
+function refreshRecTypes() {
+    const meta = window.hwManageMeta || {};
+    const sel = document.getElementById('hwRecSubject');
+    const typeSel = document.getElementById('hwRecType');
+    if (!sel || !typeSel) return;
+    typeSel.innerHTML = renderRecTypeOptions(meta, parseInt(sel.value, 10));
 }
 
 // 布置作业：登记当天应交科目，并把该学科所有人的提交位清 0
@@ -771,10 +1046,13 @@ async function submitRecord() {
     if (!dateEl || !dateEl.value) { alert('请选择日期'); return; }
     const subjectId = parseInt(subjEl ? subjEl.value : '0', 10);
     if (isNaN(subjectId)) { alert('请选择学科'); return; }
+    const typeEl = document.getElementById('hwRecType');
+    const typeRaw = typeEl ? typeEl.value : '';
 
-    const r = await hwPost('/update', {
-        student_id: sid, target_date: dateEl.value, subject_id: subjectId
-    });
+    const body = { student_id: sid, target_date: dateEl.value, subject_id: subjectId };
+    if (typeRaw !== '') body.type_id = parseInt(typeRaw, 10);
+
+    const r = await hwPost('/update', body);
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || '登记失败');
     alert('✅ 已登记学生 ' + sid + ' 提交');
@@ -788,11 +1066,22 @@ window.homework = {
     submitInit,
     submitArrange,
     submitRecord,
+    initSetStudentCount,
+    initSetGrade,
+    initToggleSubject,
+    initToggleType,
+    initAddType,
+    initAddSubject,
+    refreshInit: hwRefreshInit,
+    refreshRecTypes,
     chgTrend,
     renderTrendChart,
     drawLineChart,
     hwWeight,
     computeRate,
     buildTrendSeries,
-    renderRankBlock
+    renderRankBlock,
+    hwDefaultStudentCount,
+    HW_TYPE_DEFAULTS,
+    HW_TYPE_GENERIC
 };

@@ -350,6 +350,193 @@ inline int countSubmitted(const HwData& data, const Date& date, const std::vecto
 }
 
 // ========================================
+// 作业种类（第四维，侧车存储）
+// ----------------------------------------
+// 主数据仍是 [天][学生][学科] 一 bit，不动老格式；
+// 种类单独存明文 JSON（键 homework_types）：
+//   { "2026-11-27": { "23": { "0": [0,2] } } }
+// 学科 bit = 该科所有种类都交齐才置 1。
+// ========================================
+inline std::string trimStr(const std::string& s) {
+  size_t b = s.find_first_not_of(" \t\r\n");
+  if (b == std::string::npos) return "";
+  size_t e = s.find_last_not_of(" \t\r\n");
+  return s.substr(b, e - b + 1);
+}
+
+inline std::vector<std::string> typesOf(const json& meta, int subject) {
+  std::vector<std::string> out;
+  if (!meta.is_object() || !meta.contains("types")) return out;
+  const json& t = meta["types"];
+  if (!t.is_object()) return out;
+  std::string key = std::to_string(subject);
+  if (!t.contains(key)) return out;
+  const json& arr = t[key];
+  if (!arr.is_array()) return out;
+  for (const auto& x : arr) {
+    if (!x.is_string()) continue;
+    std::string v = trimStr(x.get<std::string>());
+    if (!v.empty() && std::find(out.begin(), out.end(), v) == out.end()) out.push_back(v);
+  }
+  return out;
+}
+
+inline json loadTypeSets(LocalStore& store) {
+  auto raw = store.get("homework_types");
+  if (!raw || raw->empty()) return json::object();
+  try {
+    json v = json::parse(*raw);
+    return v.is_object() ? v : json::object();
+  } catch (...) {
+    return json::object();
+  }
+}
+
+inline void saveTypeSets(LocalStore& store, const json& v) {
+  store.set("homework_types", v.dump(-1, ' ', false));
+}
+
+inline std::vector<int> typeSetFor(const json& root, const std::string& date, int sid, int subject) {
+  std::vector<int> out;
+  if (!root.is_object() || !root.contains(date)) return out;
+  const json& d = root[date];
+  if (!d.is_object()) return out;
+  std::string sidKey = std::to_string(sid);
+  if (!d.contains(sidKey)) return out;
+  const json& stu = d[sidKey];
+  if (!stu.is_object()) return out;
+  std::string subjKey = std::to_string(subject);
+  if (!stu.contains(subjKey)) return out;
+  const json& arr = stu[subjKey];
+  if (!arr.is_array()) return out;
+  for (const auto& x : arr) {
+    if (!x.is_number_integer()) continue;
+    int n = x.get<int>();
+    if (n >= 0 && std::find(out.begin(), out.end(), n) == out.end()) out.push_back(n);
+  }
+  return out;
+}
+
+inline void typeMark(json& root, const std::string& date, int sid, int subject,
+                     const std::vector<int>& idxs) {
+  if (!root.is_object()) root = json::object();
+  if (!root.contains(date) || !root[date].is_object()) root[date] = json::object();
+  std::string sidKey = std::to_string(sid);
+  if (!root[date].contains(sidKey) || !root[date][sidKey].is_object())
+    root[date][sidKey] = json::object();
+  std::string subjKey = std::to_string(subject);
+
+  std::vector<int> marked = typeSetFor(root, date, sid, subject);
+  for (int i : idxs)
+    if (std::find(marked.begin(), marked.end(), i) == marked.end()) marked.push_back(i);
+  std::sort(marked.begin(), marked.end());
+  root[date][sidKey][subjKey] = marked;
+}
+
+inline int requiredTotal(const json& meta, int studentCount, const std::vector<int>& required) {
+  int perStudent = 0;
+  for (int s : required) {
+    int n = (int)typesOf(meta, s).size();
+    perStudent += (n == 0 ? 1 : n);
+  }
+  return studentCount * perStudent;
+}
+
+inline int countSubmittedTyped(const HwData& data, const json& meta, const json& typeSets,
+                               const Date& date, const std::vector<int>& required) {
+  if (data.empty() || required.empty()) return 0;
+  int totalDays = (int)data.size();
+  Date from = addDays(todayLocal(), -(totalDays - 1));
+  int idx = daysBetween(date, from);
+  if (idx < 0 || idx >= totalDays) return 0;
+  std::string dateKey = isoDate(date);
+  const auto& day = data[idx];
+  int count = 0;
+  for (size_t sid = 1; sid < day.size(); ++sid) {
+    for (int subject : required) {
+      auto types = typesOf(meta, subject);
+      if (types.empty()) {
+        if (subject >= 0 && subject < (int)day[sid].size() && day[sid][subject] == 1) ++count;
+      } else {
+        for (int i : typeSetFor(typeSets, dateKey, (int)sid, subject))
+          if (i < (int)types.size()) ++count;
+      }
+    }
+  }
+  return count;
+}
+
+// 登记一次提交：/homework/update 与 /uuids/add 共用
+inline bool hwSubmit(LocalStore& store, const std::string& password, int sid, int subjectId,
+                     int typeId, const std::string& dateStr, bool& changed,
+                     std::vector<int>& typesDone, std::string& err) {
+  HwData data;
+  bool exists = false;
+  try { exists = hwLoad(store, password, data); }
+  catch (...) { err = "密码错误"; return false; }
+  if (!exists) data = {{{0}, {0}}};
+  if (data.empty() || data[0].empty() || data[0][0].empty()) { err = "作业数据异常"; return false; }
+
+  int totalDays = (int)data.size();
+  int actualStudents = (int)data[0].size();
+  int subjects = (int)data[0][0].size();
+  Date from = addDays(todayLocal(), -(totalDays - 1));
+
+  Date target;
+  if (!parseDate(dateStr, target)) { err = "无效的日期"; return false; }
+  int dayIndex = daysBetween(target, from);
+  if (dayIndex < 0) {
+    for (int i = 0; i < -dayIndex; ++i)
+      data.insert(data.begin(), std::vector<std::vector<int>>(actualStudents, std::vector<int>(subjects, 0)));
+    dayIndex = 0;
+  } else if (dayIndex >= totalDays) {
+    for (int i = 0; i < dayIndex - totalDays + 1; ++i)
+      data.push_back(std::vector<std::vector<int>>(actualStudents, std::vector<int>(subjects, 0)));
+  }
+
+  actualStudents = (int)data[0].size();
+  subjects = (int)data[0][0].size();
+  if (sid <= 0 || sid >= actualStudents) { err = "无效的学生ID: " + std::to_string(sid); return false; }
+  if (subjectId < 0 || subjectId >= subjects) { err = "无效的学科ID: " + std::to_string(subjectId); return false; }
+
+  json meta = json::object();
+  auto metaRaw = store.get("homework_meta");
+  if (metaRaw && !metaRaw->empty()) { try { meta = json::parse(*metaRaw); } catch (...) {} }
+
+  auto subjectTypes = typesOf(meta, subjectId);
+  json typeSets = loadTypeSets(store);
+
+  bool wasSet = data[dayIndex][sid][subjectId] == 1;
+  changed = !wasSet;
+  typesDone.clear();
+
+  if (subjectTypes.empty()) {
+    data[dayIndex][sid][subjectId] = 1;
+  } else {
+    std::vector<int> picked;
+    if (typeId < 0) {
+      for (int i = 0; i < (int)subjectTypes.size(); ++i) picked.push_back(i);
+    } else {
+      if (typeId >= (int)subjectTypes.size()) { err = "作业种类超出范围"; return false; }
+      picked.push_back(typeId);
+    }
+    auto before = typeSetFor(typeSets, dateStr, sid, subjectId);
+    typeMark(typeSets, dateStr, sid, subjectId, picked);
+    auto after = typeSetFor(typeSets, dateStr, sid, subjectId);
+    changed = after.size() > before.size() || !wasSet;
+    bool allDone = true;
+    for (int i = 0; i < (int)subjectTypes.size(); ++i)
+      if (std::find(after.begin(), after.end(), i) == after.end()) { allDone = false; break; }
+    data[dayIndex][sid][subjectId] = allDone ? 1 : 0;
+    typesDone = after;
+  }
+
+  if (!hwSave(store, data, password)) { err = "保存失败"; return false; }
+  saveTypeSets(store, typeSets);
+  return true;
+}
+
+// ========================================
 // UID 归一化（7 字节，左补零）
 // ========================================
 // UTF-8 字符数（对齐 Python 的 len(str)，不是字节数）

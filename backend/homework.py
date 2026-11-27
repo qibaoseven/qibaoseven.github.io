@@ -372,14 +372,35 @@ async def init_homework_system(class_store, config, password=None):
     normalized_names = {str(i): subject_names.get(i, subject_names.get(str(i)))
                         for i in range(subject_count)}
 
+    # 作业种类（可选）：{ "0": ["练习与测试", "试卷"] }，空列表视为没配
+    normalized_types = {}
+    raw_types = config.get('types') or {}
+    if isinstance(raw_types, dict):
+        for key, value in raw_types.items():
+            try:
+                idx = int(key)
+            except (TypeError, ValueError):
+                continue
+            if idx < 0 or idx >= subject_count or not isinstance(value, list):
+                continue
+            names = []
+            for item in value:
+                text = str(item).strip()
+                if text and text not in names:
+                    names.append(text)
+            if names:
+                normalized_types[str(idx)] = names
+
     meta = {
         'studentCount': student_count,
         'subjectCount': subject_count,
         'subjectNames': normalized_names,
+        'types': normalized_types,
         'initializedAt': datetime.datetime.utcnow().isoformat(timespec='milliseconds') + 'Z',
         'startDate': _iso_date(start)
     }
     await class_store.set('homework_meta', json.dumps(meta, ensure_ascii=False))
+    await class_store.set(TYPES_KEY, '{}')
 
     return {
         'success': True,
@@ -388,6 +409,7 @@ async def init_homework_system(class_store, config, password=None):
             'studentCount': student_count,
             'subjectCount': subject_count,
             'subjectNames': normalized_names,
+            'types': normalized_types,
             'actualStudents': actual_students,
             'startDate': _iso_date(start)
         }
@@ -624,3 +646,177 @@ def count_submitted_for_date(homework_data, date, required):
             if subject < len(row) and row[subject] == 1:
                 count += 1
     return count
+
+
+# ========================================
+# 作业种类（第四维）
+# ----------------------------------------
+# 主数据仍是 [天][学生][学科] 一 bit，保持不变（老班级照旧能读）；
+# 种类单独存一份明文小 JSON（和 required 同款思路），键 homework_types：
+#   { "2026-11-27": { "23": { "0": [0, 2] } } }
+# 语义：某天、某生、某科，已经交过的种类下标。该科所有种类交齐才把学科 bit 置 1。
+# ========================================
+TYPES_KEY = 'homework_types'
+
+
+def types_of(meta, subject_id):
+    """meta.types[学科] -> [种类名...]"""
+    if not isinstance(meta, dict):
+        return []
+    raw = meta.get('types') or {}
+    if not isinstance(raw, dict):
+        return []
+    value = raw.get(str(subject_id), raw.get(subject_id, []))
+    if not isinstance(value, list):
+        return []
+    return [str(x) for x in value if str(x).strip()]
+
+
+async def load_type_sets(class_store):
+    raw = await class_store.get(TYPES_KEY)
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
+
+
+async def save_type_sets(class_store, data):
+    await class_store.set(TYPES_KEY, json.dumps(data, ensure_ascii=False))
+
+
+def type_set_for(root, date_key, sid, subject_id):
+    try:
+        value = root[date_key][str(sid)][str(subject_id)]
+    except (KeyError, TypeError):
+        return []
+    if not isinstance(value, list):
+        return []
+    out = []
+    for item in value:
+        try:
+            num = int(item)
+        except (TypeError, ValueError):
+            continue
+        if num >= 0 and num not in out:
+            out.append(num)
+    return out
+
+
+def type_mark(root, date_key, sid, subject_id, idxs):
+    marked = type_set_for(root, date_key, sid, subject_id)
+    for i in idxs:
+        if i not in marked:
+            marked.append(i)
+    marked.sort()
+    root.setdefault(date_key, {}).setdefault(str(sid), {})[str(subject_id)] = marked
+
+
+def required_total(meta, student_count, required):
+    """该天应交条数 = 学生数 × Σ(每科种类数，未配种类算 1)"""
+    per_student = 0
+    for subject in required or []:
+        count = len(types_of(meta, subject))
+        per_student += 1 if count == 0 else count
+    return (student_count or 0) * per_student
+
+
+def count_submitted_typed(homework_data, meta, type_sets, date, required):
+    """已交条数：种类级；没配种类按学科 bit 算 1"""
+    if not homework_data or not required:
+        return 0
+
+    total_days = len(homework_data)
+    date_from = _add_days(_today_start(), -(total_days - 1))
+    day_index = (_parse_date(date) - date_from).days
+    if day_index < 0 or day_index >= total_days:
+        return 0
+
+    date_key = _iso_date(_parse_date(date))
+    day = homework_data[day_index] or []
+    count = 0
+    for sid in range(1, len(day)):
+        row = day[sid] or []
+        for subject in required:
+            types = types_of(meta, subject)
+            if not types:
+                if subject < len(row) and row[subject] == 1:
+                    count += 1
+            else:
+                done = [i for i in type_set_for(type_sets, date_key, sid, subject) if i < len(types)]
+                count += len(done)
+    return count
+
+
+async def submit_homework(class_store, student_id, target_date, subject_id, password=None, type_id=None):
+    """
+    登记一次提交（/homework/update 与 /uuids/add 共用）。
+    返回 {'saved', 'changed', 'typesDone'}。
+    """
+    if not password:
+        raise Exception('更新作业需要密码')
+
+    homework_data = await load_homework_data(class_store, password)
+    if not homework_data:
+        homework_data = [[[0], [0]]]
+
+    actual_students = len(homework_data[0])
+    subjects = len(homework_data[0][0])
+    total_days = len(homework_data)
+
+    today = _today_start()
+    date_from = _add_days(today, -(total_days - 1))
+
+    target = _parse_date(target_date)
+    day_index = (target - date_from).days
+
+    if day_index < 0:
+        for _ in range(-day_index):
+            homework_data.insert(0, [[0] * subjects for _ in range(actual_students)])
+        day_index = 0
+    elif day_index >= total_days:
+        for _ in range(day_index - total_days + 1):
+            homework_data.append([[0] * subjects for _ in range(actual_students)])
+        day_index = total_days
+
+    actual_students = len(homework_data[0])
+    subjects = len(homework_data[0][0])
+
+    if student_id <= 0 or student_id >= actual_students:
+        raise Exception(f'无效的学生ID: {student_id}')
+    if subject_id < 0 or subject_id >= subjects:
+        raise Exception(f'无效的学科ID: {subject_id}')
+
+    meta = await get_homework_meta(class_store) or {}
+    subject_types = types_of(meta, subject_id)
+    type_sets = await load_type_sets(class_store)
+
+    was_set = homework_data[day_index][student_id][subject_id] == 1
+    changed = not was_set
+    date_key = _iso_date(target)
+    types_done = []
+
+    if not subject_types:
+        # 没配种类：旧行为，学科直接置 1
+        homework_data[day_index][student_id][subject_id] = 1
+        types_done = []
+    else:
+        before = type_set_for(type_sets, date_key, student_id, subject_id)
+        if type_id is None:
+            picked = list(range(len(subject_types)))
+        else:
+            if type_id < 0 or type_id >= len(subject_types):
+                raise Exception('作业种类超出范围')
+            picked = [type_id]
+        type_mark(type_sets, date_key, student_id, subject_id, picked)
+        after = type_set_for(type_sets, date_key, student_id, subject_id)
+        changed = len(after) > len(before) or not was_set
+        all_done = all(i in after for i in range(len(subject_types)))
+        homework_data[day_index][student_id][subject_id] = 1 if all_done else 0
+        types_done = after
+
+    saved = await save_homework_data(class_store, homework_data, password)
+    await save_type_sets(class_store, type_sets)
+    return {'saved': bool(saved), 'changed': changed, 'typesDone': types_done}
