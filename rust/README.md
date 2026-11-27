@@ -138,3 +138,7 @@ data/
 
 `Win+R` → `shell:startup`，把 `OpenStu.exe` 的快捷方式丢进去。程序用自身路径定位
 `config.txt` 和 `data/`，快捷方式的“起始位置”不影响运行。
+
+## 自动构建
+
+推送到 `rust/v0.46` 且改动 `rust/**` 时，GitHub Actions 会自动编译 x86_64-unknown-linux-musl 静态单文件，产物发布到 Release（tag `rust-latest`）。
