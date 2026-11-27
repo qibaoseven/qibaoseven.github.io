@@ -45,8 +45,10 @@
 // 只读卡、只吐串口、只显示最近一张卡的 UID，供网页「硬件登记」把 UID 绑到学号。
 // 注意：GPIO0 在复位瞬间被采样，上电前就短接会让板子进 UART 下载模式；
 //       所以触发要在板子跑起来之后（3 秒窗口内）再拉低。
-#define CARD_MODE_PIN        0            // D3 = GPIO0
+#define CARD_MODE_PIN        0            // D3 = GPIO0，低电平进读卡模式
 #define CARD_MODE_WINDOW_MS  3000UL
+#define CARD_MODE_LED_PIN    2            // 板载 LED = D4/GPIO2，低电平点亮
+#define CARD_MODE_BLINK_MS   60UL         // 窗口内爆闪间隔
 
 static uint8_t  requiredList[CARD_SUBJECT_MAX];
 static int      requiredCount = 0;
@@ -291,13 +293,26 @@ static bool connectWifi() {
 // 读卡模式
 // ========================================
 // 启动后 3 秒内轮询 D3/GPIO0，低电平即进入读卡模式
+// 板载 LED 在窗口内爆闪（亮-灭-亮-灭），窗口结束熄灭，提示"现在可以按了"
 static bool cardModeRequested() {
   pinMode(CARD_MODE_PIN, INPUT_PULLUP);
-  uint32_t start = millis();
+  pinMode(CARD_MODE_LED_PIN, OUTPUT);
+  uint32_t start     = millis();
+  uint32_t lastBlink = start;
+  bool     ledOn     = false;
   while (millis() - start < CARD_MODE_WINDOW_MS) {
-    if (digitalRead(CARD_MODE_PIN) == LOW) return true;
-    delay(10);
+    if (millis() - lastBlink >= CARD_MODE_BLINK_MS) {
+      lastBlink = millis();
+      ledOn = !ledOn;
+      digitalWrite(CARD_MODE_LED_PIN, ledOn ? LOW : HIGH);
+    }
+    if (digitalRead(CARD_MODE_PIN) == LOW) {
+      digitalWrite(CARD_MODE_LED_PIN, HIGH);   // 按下即熄灭，别晃眼
+      return true;
+    }
+    delay(5);
   }
+  digitalWrite(CARD_MODE_LED_PIN, HIGH);       // 窗口关闭，灯灭
   return false;
 }
 
@@ -370,7 +385,7 @@ void setup() {
   Serial.println("=== OpenStu card reader ===");
 
   // 先给 3 秒窗口：D3(GPIO0) 被拉低 → 读卡登记模式；否则继续走原系统
-  lcdset("OpenStu boot", "D3 low=card mode");
+  lcdset("OpenStu boot", "D3 low, LED on");
   if (cardModeRequested()) {
     runCardMode();      // 不返回
   }
