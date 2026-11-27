@@ -40,6 +40,14 @@
 #define CARD_SUBJECT_MAX     16          // 学科数上限，超过只取前 16 科
 #define TIME_VALID_EPOCH     1600000000UL  // 2020-09 之后才算授时成功
 
+// ---------- 读卡模式（上电 3 秒窗口） ----------
+// D3 / GPIO0 在启动后 3 秒内被拉低 → 不进班级交作业系统，改成"读卡登记模式"：
+// 只读卡、只吐串口、只显示最近一张卡的 UID，供网页「硬件登记」把 UID 绑到学号。
+// 注意：GPIO0 在复位瞬间被采样，上电前就短接会让板子进 UART 下载模式；
+//       所以触发要在板子跑起来之后（3 秒窗口内）再拉低。
+#define CARD_MODE_PIN        0            // D3 = GPIO0
+#define CARD_MODE_WINDOW_MS  3000UL
+
 static uint8_t  requiredList[CARD_SUBJECT_MAX];
 static int      requiredCount = 0;
 static int      totalItems    = 0;        // = 学生数 × 应交科目数
@@ -279,12 +287,93 @@ static bool connectWifi() {
   return true;
 }
 
+// ========================================
+// 读卡模式
+// ========================================
+// 启动后 3 秒内轮询 D3/GPIO0，低电平即进入读卡模式
+static bool cardModeRequested() {
+  pinMode(CARD_MODE_PIN, INPUT_PULLUP);
+  uint32_t start = millis();
+  while (millis() - start < CARD_MODE_WINDOW_MS) {
+    if (digitalRead(CARD_MODE_PIN) == LOW) return true;
+    delay(10);
+  }
+  return false;
+}
+
+// UID -> 紧凑 14 字符（去掉冒号，正好塞满一行 1602）
+static void uidToCompact(const uint8_t* uid, uint8_t len, char* out) {
+  out[0] = '\0';
+  for (uint8_t i = 0; i < len; ++i) {
+    char b[3];
+    snprintf(b, sizeof(b), "%02X", uid[i]);
+    strcat(out, b);
+  }
+}
+
+// 读卡模式主循环：永不返回，只能靠串口命令/断电退出
+static void runCardMode() {
+  Serial.println("=== OpenStu card mode ===");
+  lcdset("CARD MODE", "insert card");
+
+  if (!cardBegin()) {
+    Serial.println("[card] init failed");
+    lcdset("Card init fail", "");
+    delay(3000);
+    ESP.restart();
+  }
+
+  uint8_t lastUid[CARD_UID_MAX];
+  uint8_t lastLen = 0;
+  uint32_t count = 0;
+
+  while (true) {
+    // 串口命令：boot / exit → 回正常交作业系统
+    if (Serial.available() > 0) {
+      String cmd = Serial.readStringUntil('\n');
+      cmd.trim();
+      if (cmd.equalsIgnoreCase("boot") || cmd.equalsIgnoreCase("exit")) {
+        Serial.println("[mode] reboot to normal");
+        lcdset("Rebooting", "to homework");
+        delay(600);
+        ESP.restart();
+      }
+    }
+
+    uint8_t uid[CARD_UID_MAX];
+    uint8_t len = 0;
+    if (cardReadNew(uid, len, 1500)) {
+      ++count;
+      char hex[3 * CARD_UID_MAX + 1];
+      uidToHex(uid, len, hex);
+      // 网页「硬件登记」按这一行解析；格式固定为 UID:AA:BB:...
+      Serial.print("UID:");
+      Serial.println(hex);
+
+      char compact[2 * CARD_UID_MAX + 1];
+      uidToCompact(uid, len, compact);
+      lcdset("LAST CARD", compact);
+
+      memcpy(lastUid, uid, len);
+      lastLen = len;
+      Serial.printf("[mode] card #%lu\n", (unsigned long)count);
+    }
+    delay(5);
+  }
+}
+
 void setup() {
   screeninit();
   Serial.begin(115200);
   delay(200);
   Serial.println();
   Serial.println("=== OpenStu card reader ===");
+
+  // 先给 3 秒窗口：D3(GPIO0) 被拉低 → 读卡登记模式；否则继续走原系统
+  lcdset("OpenStu boot", "D3 low=card mode");
+  if (cardModeRequested()) {
+    runCardMode();      // 不返回
+  }
 
   lcdset("OpenStu boot", "");
 

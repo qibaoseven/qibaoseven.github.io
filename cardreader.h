@@ -11,12 +11,12 @@
 //   · PN532（有预算）：I2C，SDA=GPIO4、SCL=GPIO5，与 LCD1602 共用总线
 //   · RC522（贪便宜）：SPI，SS=GPIO15、RST=GPIO16
 //
-// 用法：在 .ino 最顶部（#include 之前）写下一行，或者什么都不写用默认的 PN532
-//     #define CARD_READER_RC522
+// 用法：在 .ino 最顶部（#include 之前）写下一行，或者什么都不写用默认的 RC522
+//     #define CARD_READER_PN532     // 要用 PN532 才需要显式打开
 // ========================================
 
 #if !defined(CARD_READER_PN532) && !defined(CARD_READER_RC522)
-#define CARD_READER_PN532            // 不选就默认 PN532
+#define CARD_READER_RC522           // 不选就默认 RC522（便宜、常见）
 #endif
 
 #if defined(CARD_READER_PN532) && defined(CARD_READER_RC522)
