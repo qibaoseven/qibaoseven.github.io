@@ -128,3 +128,7 @@ C++ 版没有引入 TLS 客户端。真需要的话，可以让 Python 版导出
 
 Windows：`Win+R` 输入 `shell:startup`，把 `OpenStu.exe` 的**快捷方式**丢进去即可。
 注意快捷方式的“起始位置”不影响运行，因为程序用自身路径定位 `config.txt` 和 `data/`。
+
+## 自动构建
+
+推送到 `cpp/v0.46` 且改动 `cpp/**` 时，GitHub Actions 会自动 `make linux-static`，产物发布到 Release（tag `cpp-latest`）。
