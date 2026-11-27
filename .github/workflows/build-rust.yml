@@ -1,0 +1,48 @@
+name: build-rust
+
+# rust/v0.46 有新提交就编译 Linux 静态单文件并发到 Release（tag: rust-latest）
+on:
+  push:
+    branches: ['rust/v0.46']
+    paths:
+      - 'rust/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: 安装 musl 链接工具
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust -> target
+
+      - name: 编译 linux-musl
+        run: |
+          cd rust
+          cargo build --release --target x86_64-unknown-linux-musl
+          cp target/x86_64-unknown-linux-musl/release/openstu ../openstu-v0.46-rust-linux-x86_64
+          file ../openstu-v0.46-rust-linux-x86_64
+          ls -lh ../openstu-v0.46-rust-linux-x86_64
+
+      - name: 发布到 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: rust-latest
+          name: Rust 后端 · rust/v0.46
+          prerelease: true
+          body: |
+            自动编译自 `rust/v0.46` 分支，提交 ${{ github.sha }}
+            Linux x86_64 静态单文件（musl，任何发行版都能跑）：`./openstu-v0.46-rust-linux-x86_64`
+          files: openstu-v0.46-rust-linux-x86_64
