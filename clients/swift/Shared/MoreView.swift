@@ -617,11 +617,17 @@ struct JournalPage: View {
 
 struct LogsPage: View {
     @ObservedObject var store: MoreStore
+    @State private var filter = ""
 
     var body: some View {
         List {
-            let logs = store.data["logs"] as? [[String: Any]] ?? []
-            if logs.isEmpty { Text("（暂无日志）") }
+            TextField("筛选：学生 / 操作 / 原因", text: $filter)
+            let all = store.data["logs"] as? [[String: Any]] ?? []
+            let logs = filter.isEmpty ? all : all.filter {
+                let hay = "\($0["action"] as? String ?? "") \($0["student_name"] as? String ?? "") \($0["student_id"] as? String ?? "") \($0["reason"] as? String ?? "")"
+                return hay.localizedCaseInsensitiveContains(filter)
+            }
+            if logs.isEmpty { Text("（没有匹配的日志）") }
             ForEach(Array(logs.prefix(60).enumerated()), id: \.offset) { item in
                 let l = item.element
                 HStack {
