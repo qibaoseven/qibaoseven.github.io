@@ -590,8 +590,7 @@ struct ReportPage: View {
 
     var body: some View {
         List {
-            let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-            let today = f.string(from: Date())
+            let today = todayText()
             let dr = (store.data["dailyReport"] as? [String: Any])?[today] as? [String: Any]
             Section("今日汇报 \(today)") {
                 Text((dr?["allReported"] as? Bool ?? false) ? "✅ 已全部汇报" : "⭕ 未完成")
@@ -653,6 +652,12 @@ struct AccountPage: View {
 
 
 // MARK: - 小工具（压低最低系统版本用）
+
+private func todayText() -> String {
+    let f = DateFormatter()
+    f.dateFormat = "yyyy-MM-dd"
+    return f.string(from: Date())
+}
 
 private func studentName(_ scores: [String: Any], _ sid: String) -> String {
     if let arr = scores[sid] as? [Any], !arr.isEmpty, let n = arr[0] as? String { return n }

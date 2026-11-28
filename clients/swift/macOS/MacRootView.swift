@@ -131,7 +131,6 @@ struct SettingsPane: View {
                 }
             }
             if let error { Section { Text(error).foregroundStyle(.red) } }
-            .formStyle(.grouped)
         }
     }
 }

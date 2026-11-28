@@ -104,6 +104,9 @@ jobs:
           echo "ANDROID_USER_HOME=$HOME/.android" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_HOME=$HOME/.android" >> "$GITHUB_ENV"
       - uses: gradle/actions/setup-gradle@v3
+        with:
+          # AGP 8.5 只支持 Gradle 8.x，runner 默认的 9.x 会让插件直接崩
+          gradle-version: "8.7"
       - name: 编译 Debug APK
         working-directory: clients/android
         run: gradle :app:assembleDebug --no-daemon
