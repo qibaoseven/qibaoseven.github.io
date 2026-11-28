@@ -17,6 +17,10 @@
 #include <QDate>
 #include <QTime>
 #include <QDateTime>
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QRandomGenerator>
@@ -169,6 +173,9 @@ void OpenStuMoreDialog::buildUi() {
     auto* bPay = new QPushButton(QStringLiteral("给所有班干发工资（进金币）"), extraPage);
     connect(bPay, &QPushButton::clicked, this, &OpenStuMoreDialog::paySalaries);
     ev->addWidget(bPay);
+    auto* bImport = new QPushButton(QStringLiteral("📥 导入备份 JSON（覆盖整班）"), extraPage);
+    connect(bImport, &QPushButton::clicked, this, &OpenStuMoreDialog::importBackup);
+    ev->addWidget(bImport);
     // ---------------- 分组管理 ----------------
     auto* groupPage = new QWidget(this);
     auto* gpv = new QVBoxLayout(groupPage);
@@ -1232,5 +1239,30 @@ void OpenStuMoreDialog::exchange(bool scoreToGold) {
     m_exMsg->setText(scoreToGold
         ? QStringLiteral("✓ %1：学分 -%2，金币 +%3").arg(name).arg(amount).arg(amount * s2g)
         : QStringLiteral("✓ %1：金币 -%2，学分 +%3").arg(name).arg(amount).arg(amount * g2s));
+    fillTable();
+}
+
+// ======================= 备份导入 =======================
+void OpenStuMoreDialog::importBackup() {
+    const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("选择备份 JSON"), QString(),
+                                                       QStringLiteral("JSON (*.json)"));
+    if (path.isEmpty()) return;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) { m_msg->setText(QStringLiteral("打不开文件")); return; }
+    QJsonParseError err{};
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+        m_msg->setText(QStringLiteral("不是合法 JSON：") + err.errorString());
+        return;
+    }
+    QJsonObject obj = doc.object();
+    if (obj.contains("data") && obj.value("data").isObject()) obj = obj.value("data").toObject();
+    if (!obj.contains("scores")) { m_msg->setText(QStringLiteral("备份里没有 scores 字段，已中止")); return; }
+    if (QMessageBox::question(this, QStringLiteral("确认导入"),
+                              QStringLiteral("这会覆盖当前整班数据，确定？")) != QMessageBox::Yes)
+        return;
+    m_data = obj;
+    m_api->saveClassData(m_data);
+    m_msg->setText(QStringLiteral("已导入备份：") + QFileInfo(path).fileName());
     fillTable();
 }

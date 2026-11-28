@@ -47,6 +47,7 @@ private slots:
     void completePunishment();
     void bindUid();
     void exchange(bool scoreToGold);
+    void importBackup();
     void onUuids(const QJsonObject& uuids);
     void onUidAdded(bool ok, const QString& message);
 
