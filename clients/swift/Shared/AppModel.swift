@@ -3,10 +3,10 @@ import Combine
 
 @MainActor
 final class AppModel: ObservableObject {
-    @Published var server: String
-    @Published var classId: String
-    @Published var password: String
-    @Published var configured: Bool
+    @Published var server: String = "https://os-stu.netlify.app"
+    @Published var classId: String = ""
+    @Published var password: String = ""
+    @Published var configured: Bool = false
 
     @Published var required: RequiredToday?
     @Published var roster: Roster?
