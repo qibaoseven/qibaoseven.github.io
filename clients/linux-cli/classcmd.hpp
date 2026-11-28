@@ -384,4 +384,170 @@ inline int cmdUids(const Client& c) {
     return 0;
 }
 
+// ---------- 职位 / 考试 / 每日汇报 / 备份 / 账号 ----------
+
+inline int cmdPositions(const Client& c) {
+    js::Value data = loadClassData(c);
+    const js::Value& pos = data["positions"]["list"];
+    if (!pos.isObj() || pos.o.empty()) { std::printf("（还没有职位）\n"); return 0; }
+    std::printf("默认月薪: %.0f\n", data["positions"]["defaultSalary"].n);
+    for (auto& kv : pos.o) {
+        std::printf("\n👔 %s  月薪 %.0f\n", kv.first.c_str(), kv.second["salary"].n);
+        std::printf("   成员: ");
+        if (kv.second["members"].a.empty()) std::printf("（空缺）");
+        for (auto& m : kv.second["members"].a) std::printf("%s ", m.asStr().c_str());
+        std::printf("\n");
+    }
+    std::printf("\n上次发薪: %s\n", data["positions"]["lastPayDate"].asStr().empty()
+        ? "从未" : data["positions"]["lastPayDate"].asStr().c_str());
+    return 0;
+}
+
+inline int cmdPositionAdd(const Client& c, const std::string& name, double salary) {
+    js::Value data = loadClassData(c);
+    if (data["positions"].t == js::Value::NUL) {
+        data.set("positions", js::Value::obj()
+                    .set("list", js::Value::obj())
+                    .set("defaultSalary", js::Value::num(5))
+                    .set("lastPayDate", js::Value::str("")));
+    }
+    js::Value list = data["positions"]["list"];
+    if (!list.isObj()) list = js::Value::obj();
+    list.set(name, js::Value::obj().set("salary", js::Value::num(salary)).set("members", js::Value::arr()));
+    js::Value positions = data["positions"];
+    positions.set("list", list);
+    data.set("positions", positions);
+    saveClassData(c, data);
+    std::printf("✓ 已添加职位「%s」，月薪 %.0f\n", name.c_str(), salary);
+    return 0;
+}
+
+inline int cmdPositionJoin(const Client& c, const std::string& name, int sid) {
+    js::Value data = loadClassData(c);
+    std::string s = std::to_string(sid);
+    if (data["scores"][s].t == js::Value::NUL) { std::printf("没有这个学号: %d\n", sid); return 1; }
+    js::Value list = data["positions"]["list"];
+    if (!list.isObj() || list[name].t == js::Value::NUL) { std::printf("没有这个职位: %s\n", name.c_str()); return 1; }
+    js::Value members = list[name]["members"];
+    if (!members.isArr()) members = js::Value::arr();
+    bool exists = false;
+    for (auto& m : members.a) if (m.asStr() == s) exists = true;
+    if (!exists) members.push(js::Value::str(s));
+    js::Value item = js::Value::obj().set("salary", list[name]["salary"]).set("members", members);
+    list.set(name, item);
+    js::Value positions = data["positions"];
+    positions.set("list", list);
+    data.set("positions", positions);
+    saveClassData(c, data);
+    std::printf(exists ? "✓ %d 已经在「%s」里了\n" : "✓ 已把 %d 登记到「%s」\n", sid, name.c_str());
+    return 0;
+}
+
+inline int cmdPositionPay(const Client& c) {
+    js::Value data = loadClassData(c);
+    const js::Value& list = data["positions"]["list"];
+    if (!list.isObj() || list.o.empty()) { std::printf("（还没有职位）\n"); return 1; }
+    js::Value gold = data["gold"];
+    if (!gold.isObj()) gold = js::Value::obj();
+    double total = 0;
+    int people = 0;
+    for (auto& kv : list.o) {
+        double salary = kv.second["salary"].n;
+        for (auto& m : kv.second["members"].a) {
+            std::string sid = m.asStr();
+            js::Value entry = gold[sid];
+            double cur = entry["amount"].n;
+            gold.set(sid, js::Value::obj().set("amount", js::Value::num(cur + salary)));
+            total += salary;
+            ++people;
+            std::printf("  %s ← +%.0f（%s）\n", sid.c_str(), salary, kv.first.c_str());
+        }
+    }
+    js::Value positions = data["positions"];
+    positions.set("lastPayDate", js::Value::str(ts().substr(0, 10)));
+    data.set("positions", positions);
+    data.set("gold", gold);
+    saveClassData(c, data);
+    std::printf("✓ 发放 %d 人次，共 %.0f 金币\n", people, total);
+    return 0;
+}
+
+inline int cmdExam(const Client& c, const std::string& sid) {
+    js::Value data = loadClassData(c);
+    const js::Value& exams = data["examScores"];
+    if (!exams.isObj() || exams.o.empty()) { std::printf("（还没有考试记录）\n"); return 0; }
+    for (auto& kv : exams.o) {
+        if (!sid.empty() && kv.first != sid) continue;
+        std::printf("\n学号 %s · %s\n", kv.first.c_str(), nameOf(data["scores"], kv.first).c_str());
+        for (auto& e : kv.second.a) {
+            std::printf("  %s  %-8s %-14s %6.1f / %.0f  (%.0f%%)\n",
+                        e["date"].asStr().c_str(), e["subject"].asStr().c_str(), e["name"].asStr().c_str(),
+                        e["score"].n, e["full"].n, e["full"].n > 0 ? e["score"].n / e["full"].n * 100 : 0.0);
+        }
+    }
+    return 0;
+}
+
+inline int cmdExamAdd(const Client& c, int sid, const std::string& subject, const std::string& name,
+                      double score, double full, const std::string& date) {
+    js::Value data = loadClassData(c);
+    std::string s = std::to_string(sid);
+    if (data["scores"][s].t == js::Value::NUL) { std::printf("没有这个学号: %d\n", sid); return 1; }
+    js::Value exams = data["examScores"];
+    if (!exams.isObj()) exams = js::Value::obj();
+    js::Value arr = exams[s];
+    if (!arr.isArr()) arr = js::Value::arr();
+    arr.push(js::Value::obj()
+                 .set("id", js::Value::str(std::to_string(time(nullptr))))
+                 .set("date", js::Value::str(date))
+                 .set("name", js::Value::str(name))
+                 .set("subject", js::Value::str(subject))
+                 .set("score", js::Value::num(score))
+                 .set("full", js::Value::num(full)));
+    exams.set(s, arr);
+    data.set("examScores", exams);
+    saveClassData(c, data);
+    std::printf("✓ 已录入 %d 的 %s %s：%.1f/%.0f\n", sid, subject.c_str(), name.c_str(), score, full);
+    return 0;
+}
+
+inline int cmdReport(const Client& c) {
+    js::Value data = loadClassData(c);
+    std::string today = ts().substr(0, 10);
+    std::string key;
+    for (char ch : today) key += (ch == '/') ? '-' : ch;
+    const js::Value& dr = data["dailyReport"][key];
+    std::printf("每日汇报 · %s\n", key.c_str());
+    if (dr.t == js::Value::NUL) std::printf("  今日还没有汇报记录\n");
+    else std::printf("  状态: %s    最后汇报: %s\n",
+                     dr["allReported"].asBool() ? "✅ 已全部汇报" : "⭕ 未完成",
+                     dr["lastReportTime"].asStr().empty() ? "-" : dr["lastReportTime"].asStr().c_str());
+    const js::Value& scores = data["scores"];
+    int n = 0; double sum = 0;
+    for (auto& kv : scores.o) { if (kv.first == "0") continue; ++n; sum += scoreOf(scores, kv.first); }
+    std::printf("  全班 %d 人，平均分 %.1f\n", n, n > 0 ? sum / n : 0);
+    return 0;
+}
+
+inline int cmdBackup(const Client& c, const std::string& path) {
+    js::Value data = loadClassData(c);
+    FILE* f = std::fopen(path.c_str(), "w");
+    if (!f) { std::printf("写不了 %s\n", path.c_str()); return 1; }
+    std::string json = data.dump();
+    std::fwrite(json.data(), 1, json.size(), f);
+    std::fclose(f);
+    std::printf("✓ 已导出班级数据 %zu 字节 → %s\n", json.size(), path.c_str());
+    return 0;
+}
+
+inline int cmdAccount(const Client& c) {
+    std::printf("服务器: %s\n班级: %s\n密码: %s\n", c.cfg.server.c_str(), c.cfg.classId.c_str(),
+                c.cfg.password.empty() ? "（未设置）" : "（已设置）");
+    js::Value classes = c.get("/api/classes", false);
+    for (auto& k : classes.a) {
+        if (k["id"].asStr() == c.cfg.classId) std::printf("班级名称: %s\n", k["name"].asStr().c_str());
+    }
+    return 0;
+}
+
 } // namespace extra

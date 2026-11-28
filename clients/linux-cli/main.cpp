@@ -275,6 +275,16 @@ static void usage() {
         "  openstu-cli types                                             已配置的作业种类\n"
         "  openstu-cli uid 12:34:56:78:9A:BC:DE 23 [--subject 0] [--type 1]\n"
         "  openstu-cli uids                                              全班卡号字典\n\n"
+        "  职位 / 考试 / 汇报 / 备份 / 账号\n"
+        "  openstu-cli positions                                         职位列表与工资\n"
+        "  openstu-cli position-add 班长 --salary 5                      添加职位\n"
+        "  openstu-cli position-join 班长 23                             登记任职\n"
+        "  openstu-cli pay                                               给所有班干发工资（加金币）\n"
+        "  openstu-cli exam [学号]                                       考试记录\n"
+        "  openstu-cli exam-add 23 数学 期中 92 --full 100               录入考试成绩\n"
+        "  openstu-cli report                                            今日汇报状态\n"
+        "  openstu-cli backup openstu-backup.json                        导出整班 JSON\n"
+        "  openstu-cli account                                           显示服务器/班级/账号\n\n"
         "选项:\n"
         "  --subject 用索引（0 起），也可 --subject-name 语文\n"
         "  --type    作业种类索引（配了种类才有意义）\n"
@@ -330,6 +340,8 @@ int main(int argc, char** argv) {
         }
 
         const bool needCfg = cmd == "status" || cmd == "list" || cmd == "submit" || cmd == "watch" ||
+            cmd == "positions" || cmd == "position-add" || cmd == "position-join" || cmd == "pay" ||
+            cmd == "exam" || cmd == "exam-add" || cmd == "report" || cmd == "backup" || cmd == "account" ||
                              cmd == "classinfo" || cmd == "scores" || cmd == "score" || cmd == "gold" ||
                              cmd == "gacha" || cmd == "journal" || cmd == "journal-add" || cmd == "journal-export" ||
                              cmd == "logs" || cmd == "groups" || cmd == "types" || cmd == "init" ||
@@ -487,6 +499,41 @@ int main(int argc, char** argv) {
                                      f.count("date") ? f["date"] : "");
         }
         if (cmd == "uids") return extra::cmdUids(c);
+        if (cmd == "positions") return extra::cmdPositions(c);
+        if (cmd == "position-add") {
+            std::vector<std::string> pos;
+            auto f = parseFlags(argc, argv, pos);
+            if (pos.empty()) die("用法: position-add 班长 [--salary 5]");
+            return extra::cmdPositionAdd(c, pos[0], f.count("salary") ? atof(f["salary"].c_str()) : 5);
+        }
+        if (cmd == "position-join") {
+            std::vector<std::string> pos;
+            parseFlags(argc, argv, pos);
+            if (pos.size() < 2) die("用法: position-join 班长 23");
+            return extra::cmdPositionJoin(c, pos[0], atoi(pos[1].c_str()));
+        }
+        if (cmd == "pay") return extra::cmdPositionPay(c);
+        if (cmd == "exam") {
+            std::vector<std::string> pos;
+            parseFlags(argc, argv, pos);
+            return extra::cmdExam(c, pos.empty() ? "" : pos[0]);
+        }
+        if (cmd == "exam-add") {
+            std::vector<std::string> pos;
+            auto f = parseFlags(argc, argv, pos);
+            if (pos.size() < 3) die("用法: exam-add 23 数学 期中 92 [--full 100] [--date 2026-11-20]");
+            return extra::cmdExamAdd(c, atoi(pos[0].c_str()), pos[1], pos[2],
+                                     atof(pos[3].c_str()), f.count("full") ? atof(f["full"].c_str()) : 100,
+                                     f.count("date") ? f["date"] : extra::ts().substr(0, 10));
+        }
+        if (cmd == "report") return extra::cmdReport(c);
+        if (cmd == "backup") {
+            std::vector<std::string> pos;
+            parseFlags(argc, argv, pos);
+            return extra::cmdBackup(c, pos.empty() ? "openstu-backup.json" : pos[0]);
+        }
+        if (cmd == "account") return extra::cmdAccount(c);
+
 
         usage();
         return 0;
