@@ -69,9 +69,14 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
-      - name: 安装 SDK 平台
-        run: sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+      # GitHub 的 ubuntu runner 自带 Android SDK，直接用，避免 setup-android 拉 cmdline-tools 失败
+      - name: 指向预装 Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          yes | sudo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+      - name: SDK 版本
+        run: ls "$ANDROID_SDK_ROOT/platforms" | tail -3
       - uses: gradle/actions/setup-gradle@v3
       - name: 编译 Debug APK
         working-directory: clients/android
@@ -89,7 +94,7 @@ jobs:
   # iOS 版不带签名（CODE_SIGNING_ALLOWED=NO），只作为编译验证。
   swift-macos:
     name: Swift (macOS)
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - name: 安装 xcodegen
@@ -113,7 +118,7 @@ jobs:
 
   swift-ios:
     name: Swift (iOS 编译验证)
-    runs-on: macos-14
+    runs-on: macos-latest
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
