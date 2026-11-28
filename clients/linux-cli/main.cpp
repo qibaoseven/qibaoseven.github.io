@@ -171,6 +171,7 @@ struct Client {
 };
 
 #include "classcmd.hpp"
+#include "info.hpp"
 
 // ============================ 展示 ============================
 static void printProgress(int done, int total) {
@@ -296,6 +297,12 @@ static void usage() {
         "  openstu-cli group-create 第一组                               建组\n"
         "  openstu-cli group-add 第一组 23                               加人\n"
         "  openstu-cli group-remove 第一组 23                            移人\n\n"
+        "  信息页（终端渲染网页内容，带字符图表）\n"
+        "  openstu-cli info                                                控制台总览\n"
+        "  openstu-cli info score|rank|group|gold|gacha|logs|exam         分数/排名/分组/金币/抽奖/日志/考试\n"
+        "  openstu-cli info daily|positions|events|account|backup         汇报/职位/自动事件/账号/备份\n"
+        "  openstu-cli info punishment|journal|homework|hardware          惩罚/历程/作业/硬件\n"
+        "  也可以写成 openstu-cli rank info（等价于 info rank）\n\n"
         "选项:\n"
         "  --subject 用索引（0 起），也可 --subject-name 语文\n"
         "  --type    作业种类索引（配了种类才有意义）\n"
