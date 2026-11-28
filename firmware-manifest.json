@@ -1,0 +1,16 @@
+{
+  "name": "OpenStu 读卡固件 (NodeMCU v3 / ESP8266)",
+  "version": "0.46-hw4",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP8266",
+      "parts": [
+        {
+          "path": "https://github.com/qibaoseven/qibaoseven.github.io/releases/download/hw-latest/openstu-v0.46-hw4-1M64.bin",
+          "offset": 0
+        }
+      ]
+    }
+  ]
+}

@@ -111,6 +111,15 @@ function renderHardwarePage() {
         <h2 class="card-title">🔌 硬件登记</h2>
         <p style="color:#888;">把卡片 UID 绑到学号；顺带可以记录这张卡对应哪个学科、哪种作业。批量绑定请先勾左列，再用上面的批量栏。</p>
 
+        <div style="padding:12px;border:1px solid #e3e8f0;border-radius:10px;margin:12px 0;background:#f7fbff;">
+            <div style="font-size:14px;font-weight:600;margin-bottom:6px;">⚡ 自动刷录固件</div>
+            <p style="font-size:12px;color:#888;margin:0 0 10px;">把开发板插到电脑 USB 上，点下面的按钮 → 自动下载最新固件（约 470KB）→ 直接烧进 NodeMCU。烧完拔插一次即可。</p>
+            <div id="hwrFlashArea"></div>
+            <div style="font-size:12px;color:#aaa;margin-top:8px;">
+                手动刷录等价命令：<code>esptool.py --port &lt;端口&gt; write_flash 0x0 openstu-v0.46-hw4-1M64.bin</code>
+            </div>
+        </div>
+
         <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px;border:1px dashed #ffd8bd;border-radius:10px;margin:12px 0;background:#fffaf6;">
             <button class="btn btn-primary" id="hwrConnectBtn" onclick="window.hardware.toggleSerial()">🔌 连接 NodeMCU</button>
             <span id="hwrSerialState" style="font-size:13px;color:#888;">未连接</span>
@@ -153,6 +162,32 @@ function renderHardwarePage() {
 }
 
 // ---------- 表格 ----------
+function hwrRenderFlashArea() {
+    const area = document.getElementById('hwrFlashArea');
+    if (!area) return;
+
+    // 浏览器没有 Web Serial 就没法烧录，也不给假按钮
+    if (!('serial' in navigator)) {
+        area.innerHTML = `<div style="padding:10px;border-radius:8px;background:#fff4f4;border:1px solid #ffd6d6;font-size:13px;color:#c0392b;">
+            ✖ 当前浏览器不支持 Web Serial，<b>无法刷录</b>，也无法读串口。<br>
+            请换桌面版 Chrome / Edge（版本 89+），或手动执行上面的 esptool 命令。
+        </div>`;
+        return;
+    }
+    if (!window.customElements || !window.customElements.get('esp-web-install-button')) {
+        area.innerHTML = `<div style="padding:10px;border-radius:8px;background:#fffbe6;border:1px solid #ffe58f;font-size:13px;color:#8a6d3b;">
+            刷录组件没加载成功（多半是没联网拿到 esp-web-tools）。<br>
+            可重试刷新页面，或手动执行上面的 esptool 命令。
+        </div>`;
+        return;
+    }
+    area.innerHTML = `<esp-web-install-button manifest="firmware-manifest.json">
+        <button slot="activate" class="btn btn-primary">⚡ 下载并刷录最新固件</button>
+        <span slot="unsupported" style="font-size:13px;color:#c0392b;">此浏览器不支持 Web Serial，无法刷录</span>
+        <span slot="not-allowed" style="font-size:13px;color:#c0392b;">当前页面不是 https / localhost，浏览器禁止串口</span>
+    </esp-web-install-button>`;
+}
+
 function renderHardwareRows() {
     const wrap = document.getElementById('hwrTableWrap');
     if (!wrap) return;
@@ -370,11 +405,13 @@ async function toggleSerial() {
         await hwrState.port.open({ baudRate: 115200 });
         hwrState.keepReading = true;
         hwrUpdateSerialState();
+        hwrRenderFlashArea();
         hwrReadLoop();
     } catch (e) {
         hwrState.port = null;
         hwrState.keepReading = false;
         hwrUpdateSerialState();
+        hwrRenderFlashArea();
         alert('连接失败：' + (e && e.message ? e.message : e) + '\n请将开发板插入 USB 后再点连接，或者手动输入 UID。');
     }
 }
@@ -412,6 +449,7 @@ async function hwrReadLoop() {
         try { reader.releaseLock(); } catch (e) { }
         hwrState.keepReading = false;
         hwrUpdateSerialState();
+        hwrRenderFlashArea();
     }
 }
 
