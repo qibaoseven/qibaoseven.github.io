@@ -46,6 +46,7 @@ private slots:
     void drawPunishment();
     void completePunishment();
     void bindUid();
+    void exchange(bool scoreToGold);
     void onUuids(const QJsonObject& uuids);
     void onUidAdded(bool ok, const QString& message);
 
@@ -97,6 +98,10 @@ private:
     QLineEdit* m_uidHex = nullptr;
     QPlainTextEdit* m_uidView = nullptr;
     QLabel* m_uidMsg = nullptr;
+    // 金币兑换
+    QComboBox* m_exStudent = nullptr;
+    QDoubleSpinBox* m_exAmount = nullptr;
+    QLabel* m_exMsg = nullptr;
     // 日志
     QPlainTextEdit* m_logs = nullptr;
     // 初始化

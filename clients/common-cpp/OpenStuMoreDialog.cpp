@@ -289,6 +289,25 @@ void OpenStuMoreDialog::buildUi() {
     uv->addWidget(m_uidMsg);
     m_tabs->addTab(uidPage, QStringLiteral("硬件登记"));
 
+    // ---------------- 金币兑换 ----------------
+    auto* exPage = new QWidget(this);
+    auto* exv2 = new QVBoxLayout(exPage);
+    auto* exRow2 = new QHBoxLayout;
+    m_exStudent = new QComboBox(exPage);
+    for (const QString& sid5 : m_roster.keys())
+        m_exStudent->addItem(nameOf(sid5) + QStringLiteral(" (") + sid5 + QStringLiteral(")"), sid5);
+    m_exAmount = new QDoubleSpinBox(exPage);
+    m_exAmount->setRange(1, 100000); m_exAmount->setValue(50);
+    auto* bS2G = new QPushButton(QStringLiteral("🔄 学分 → 金币"), exPage);
+    auto* bG2S = new QPushButton(QStringLiteral("🔄 金币 → 学分"), exPage);
+    connect(bS2G, &QPushButton::clicked, this, [this] { exchange(true); });
+    connect(bG2S, &QPushButton::clicked, this, [this] { exchange(false); });
+    exRow2->addWidget(m_exStudent); exRow2->addWidget(m_exAmount); exRow2->addWidget(bS2G); exRow2->addWidget(bG2S);
+    exv2->addLayout(exRow2);
+    m_exMsg = new QLabel(exPage);
+    exv2->addWidget(m_exMsg);
+    m_tabs->addTab(exPage, QStringLiteral("金币兑换"));
+
     m_tabs->addTab(extraPage, QStringLiteral("其它"));
 
     // ---------- 自动事件 ----------
@@ -1149,4 +1168,59 @@ void OpenStuMoreDialog::bindUid() {
 void OpenStuMoreDialog::onUidAdded(bool ok, const QString& message) {
     m_uidMsg->setText(ok ? QStringLiteral("✓ ") + message : QStringLiteral("失败：") + message);
     if (ok) m_api->fetchUuids();
+}
+
+// ======================= 金币兑换 =======================
+void OpenStuMoreDialog::exchange(bool scoreToGold) {
+    const QString sid = m_exStudent->currentData().toString();
+    const double amount = m_exAmount->value();
+    const QJsonObject rate = m_data.value("exchangeRate").toObject();
+    const double s2g = rate.value("score_to_gold").toDouble(0.1);
+    const double g2s = rate.value("gold_to_score").toDouble(1.0);
+
+    QJsonObject scores = m_data.value("scores").toObject();
+    const QJsonValue row = scores.value(sid);
+    double score = row.isArray() ? row.toArray().at(1).toDouble() : row.toObject().value("score").toDouble();
+    QJsonObject golds = m_data.value("gold").toObject();
+    QJsonObject entry = golds.value(sid).toObject();
+    double gold = entry.value("amount").toDouble();
+
+    QString name = nameOf(sid);
+    if (scoreToGold) {
+        if (score < amount) { m_exMsg->setText(QStringLiteral("学分不够：现有 %1").arg(score)); return; }
+        score -= amount;
+        gold += amount * s2g;
+        entry["amount"] = gold;
+    } else {
+        if (gold < amount) { m_exMsg->setText(QStringLiteral("金币不够：现有 %1").arg(gold)); return; }
+        gold -= amount;
+        score += amount * g2s;
+        entry["amount"] = gold;
+    }
+    if (row.isArray()) {
+        QJsonArray a = row.toArray(); a.replace(1, score); scores[sid] = a;
+    } else {
+        QJsonObject o = row.toObject(); o["score"] = score; scores[sid] = o;
+    }
+    golds[sid] = entry;
+    m_data["scores"] = scores;
+    m_data["gold"] = golds;
+
+    QJsonArray logs = m_data.value("logs").toArray();
+    logs.insert(0, QJsonObject{
+        {"timestamp", QDateTime::currentDateTime().toString(QStringLiteral("yyyy/MM/dd HH:mm:ss"))},
+        {"action", scoreToGold ? QStringLiteral("学分兑换金币") : QStringLiteral("金币兑换学分")},
+        {"student_id", sid}, {"student_name", name},
+        {"score_change", scoreToGold ? -amount : amount * g2s},
+        {"current_score", score},
+        {"reason", QStringLiteral("兑换 %1 %2").arg(amount).arg(scoreToGold ? QStringLiteral("学分") : QStringLiteral("金币"))},
+        {"page", QStringLiteral("qt")}, {"user_role", QStringLiteral("teacher")}
+    });
+    while (logs.size() > 2000) logs.removeLast();
+    m_data["logs"] = logs;
+    m_api->saveClassData(m_data);
+    m_exMsg->setText(scoreToGold
+        ? QStringLiteral("✓ %1：学分 -%2，金币 +%3").arg(name).arg(amount).arg(amount * s2g)
+        : QStringLiteral("✓ %1：金币 -%2，学分 +%3").arg(name).arg(amount).arg(amount * g2s));
+    fillTable();
 }
