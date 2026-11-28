@@ -290,6 +290,12 @@ static void usage() {
         "  openstu-cli event-add \"每周一加分\" --freq weekly:1 --targets all --change +1\n"
         "  openstu-cli event-run                                         执行到期的活动\n"
         "  openstu-cli event-del 0                                       删除第 0 个\n\n"
+        "  金币兑换与分组\n"
+        "  openstu-cli exchange 23 s2g 50                                50 学分换金币\n"
+        "  openstu-cli exchange 23 g2s 200                               200 金币换学分\n"
+        "  openstu-cli group-create 第一组                               建组\n"
+        "  openstu-cli group-add 第一组 23                               加人\n"
+        "  openstu-cli group-remove 第一组 23                            移人\n\n"
         "选项:\n"
         "  --subject 用索引（0 起），也可 --subject-name 语文\n"
         "  --type    作业种类索引（配了种类才有意义）\n"
@@ -348,6 +354,7 @@ int main(int argc, char** argv) {
             cmd == "positions" || cmd == "position-add" || cmd == "position-join" || cmd == "pay" ||
             cmd == "exam" || cmd == "exam-add" || cmd == "report" || cmd == "backup" || cmd == "account" ||
             cmd == "events" || cmd == "event-add" || cmd == "event-del" || cmd == "event-run" ||
+            cmd == "exchange" || cmd == "group-create" || cmd == "group-add" || cmd == "group-remove" ||
                              cmd == "classinfo" || cmd == "scores" || cmd == "score" || cmd == "gold" ||
                              cmd == "gacha" || cmd == "journal" || cmd == "journal-add" || cmd == "journal-export" ||
                              cmd == "logs" || cmd == "groups" || cmd == "types" || cmd == "init" ||
@@ -556,6 +563,28 @@ int main(int argc, char** argv) {
             return extra::cmdEventDel(c, atoi(pos[0].c_str()));
         }
         if (cmd == "event-run") return extra::cmdEventRun(c);
+        if (cmd == "exchange") {
+            std::vector<std::string> pos;
+            parseFlags(argc, argv, pos);
+            if (pos.size() < 3) die("用法: exchange 23 s2g 50   或   exchange 23 g2s 200");
+            return extra::cmdExchange(c, atoi(pos[0].c_str()), pos[1].c_str(), atof(pos[2].c_str()));
+        }
+        if (cmd == "group-create") {
+            std::vector<std::string> pos; parseFlags(argc, argv, pos);
+            if (pos.empty()) die("用法: group-create 第一组");
+            return extra::cmdGroupCreate(c, pos[0]);
+        }
+        if (cmd == "group-add") {
+            std::vector<std::string> pos; parseFlags(argc, argv, pos);
+            if (pos.size() < 2) die("用法: group-add 第一组 23");
+            return extra::cmdGroupAdd(c, pos[0], atoi(pos[1].c_str()));
+        }
+        if (cmd == "group-remove") {
+            std::vector<std::string> pos; parseFlags(argc, argv, pos);
+            if (pos.size() < 2) die("用法: group-remove 第一组 23");
+            return extra::cmdGroupRemove(c, pos[0], atoi(pos[1].c_str()));
+        }
+
 
 
 

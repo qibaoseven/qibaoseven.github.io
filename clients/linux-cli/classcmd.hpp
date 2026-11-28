@@ -700,4 +700,88 @@ inline int cmdEventRun(const Client& c) {
     return 0;
 }
 
+// ---------- 金币兑换 / 分组增删（网页 gold.js / group.js 的核心逻辑） ----------
+
+inline int cmdExchange(const Client& c, int sid, const char* dir, double amount) {
+    if (amount <= 0) { std::printf("数量要大于 0\n"); return 1; }
+    js::Value data = loadClassData(c);
+    std::string s = std::to_string(sid);
+    if (data["scores"][s].t == js::Value::NUL) { std::printf("没有这个学号: %d\n", sid); return 1; }
+    const double s2g = data["exchangeRate"]["score_to_gold"].isNum() ? data["exchangeRate"]["score_to_gold"].n : 0.1;
+    const double g2s = data["exchangeRate"]["gold_to_score"].isNum() ? data["exchangeRate"]["gold_to_score"].n : 1.0;
+    const std::string name = nameOf(data["scores"], s);
+    double score = scoreOf(data["scores"], s);
+    double gold = goldOf(data, s);
+
+    if (std::string(dir) == "s2g") {
+        if (score < amount) { std::printf("学分不够：现有 %.1f，需要 %.1f\n", score, amount); return 1; }
+        const double gain = amount * s2g;
+        score -= amount; gold += gain;
+        setScore(data.o["scores"], s, score);
+        setGold(data, s, gold);
+        addLog(data, "学分兑换金币", s, name, -amount, score, "消耗 " + std::to_string((int)amount) + " 学分", "gold");
+        addLog(data, "金币兑换获得", s, name, gain, gold, "获得 " + std::to_string(gain) + " 金币", "gold");
+        saveClassData(c, data);
+        std::printf("✓ %s：学分 %.1f → %.1f，金币 %.1f → %.1f（1 学分 = %.2f 金币）\n",
+                    name.c_str(), score + amount, score, gold - gain, gold, s2g);
+    } else {
+        if (gold < amount) { std::printf("金币不够：现有 %.1f，需要 %.1f\n", gold, amount); return 1; }
+        const double gain = amount * g2s;
+        gold -= amount; score += gain;
+        setGold(data, s, gold);
+        setScore(data.o["scores"], s, score);
+        addLog(data, "金币兑换学分", s, name, -amount, gold, "消耗 " + std::to_string((int)amount) + " 金币", "gold");
+        saveClassData(c, data);
+        std::printf("✓ %s：金币 %.1f → %.1f，学分 %.1f → %.1f（1 金币 = %.2f 学分）\n",
+                    name.c_str(), gold + amount, gold, score - gain, score, g2s);
+    }
+    return 0;
+}
+
+inline int cmdGroupCreate(const Client& c, const std::string& group) {
+    js::Value data = loadClassData(c);
+    js::Value groups = data["groups"];
+    if (!groups.isObj()) groups = js::Value::obj();
+    if (groups[group].isArr()) { std::printf("分组已存在: %s\n", group.c_str()); return 1; }
+    groups.set(group, js::Value::arr());
+    data.set("groups", groups);
+    saveClassData(c, data);
+    std::printf("✓ 已创建分组「%s」\n", group.c_str());
+    return 0;
+}
+
+inline int cmdGroupAdd(const Client& c, const std::string& group, int sid) {
+    js::Value data = loadClassData(c);
+    std::string s = std::to_string(sid);
+    if (data["scores"][s].t == js::Value::NUL) { std::printf("没有这个学号: %d\n", sid); return 1; }
+    js::Value groups = data["groups"];
+    if (!groups.isObj()) groups = js::Value::obj();
+    js::Value members = groups[group];
+    if (!members.isArr()) members = js::Value::arr();
+    bool has = false;
+    for (auto& m : members.a) if (m.asStr() == s) has = true;
+    if (!has) members.push(js::Value::str(s));
+    groups.set(group, members);
+    data.set("groups", groups);
+    saveClassData(c, data);
+    std::printf(has ? "✓ %d 已在「%s」里\n" : "✓ 已把 %d 加入「%s」\n", sid, group.c_str());
+    return 0;
+}
+
+inline int cmdGroupRemove(const Client& c, const std::string& group, int sid) {
+    js::Value data = loadClassData(c);
+    js::Value groups = data["groups"];
+    if (!groups[group].isArr()) { std::printf("没有这个分组: %s\n", group.c_str()); return 1; }
+    js::Value members = groups[group];
+    std::vector<js::Value> keep;
+    const std::string s = std::to_string(sid);
+    for (auto& m : members.a) if (m.asStr() != s) keep.push_back(m);
+    members.a = keep;
+    groups.set(group, members);
+    data.set("groups", groups);
+    saveClassData(c, data);
+    std::printf("✓ 已把 %d 从「%s」移除\n", sid, group.c_str());
+    return 0;
+}
+
 } // namespace extra
