@@ -1,0 +1,10 @@
+{
+  "app": {
+    "bundleName": "io.qibaoseven.openstu",
+    "vendor": "qibaoseven",
+    "versionCode": 46,
+    "versionName": "0.46",
+    "icon": "$media:app_icon",
+    "label": "$string:app_name"
+  }
+}

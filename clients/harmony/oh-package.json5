@@ -1,0 +1,9 @@
+{
+  "name": "openstu-harmony",
+  "version": "0.46.0",
+  "description": "OpenStu 交作业系统 · 鸿蒙原生客户端",
+  "main": "",
+  "author": "qibaoseven",
+  "license": "GPL-3.0",
+  "dependencies": {}
+}

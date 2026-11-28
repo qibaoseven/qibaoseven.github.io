@@ -16,3 +16,10 @@ node_modules/
 netlify/functions/*.zip
 .DS_Store
 *.log
+# 鸿蒙（DevEco Studio）
+clients/harmony/.hvigor/
+clients/harmony/**/oh_modules/
+clients/harmony/**/build/
+clients/harmony/local.properties
+clients/harmony/.idea/
+clients/harmony/**/.preview/

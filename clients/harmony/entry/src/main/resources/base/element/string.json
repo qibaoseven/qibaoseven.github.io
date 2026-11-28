@@ -1,0 +1,7 @@
+{
+  "string": [
+    { "name": "module_desc", "value": "OpenStu 交作业登记" },
+    { "name": "EntryAbility_desc", "value": "OpenStu 交作业登记" },
+    { "name": "app_name", "value": "OpenStu 交作业" }
+  ]
+}

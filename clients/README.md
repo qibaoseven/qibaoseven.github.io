@@ -10,6 +10,7 @@
 | `qt-windows/` | Windows 10+ | Qt 6 Widgets + QNetworkAccessManager | **已用 Qt 6.2 编译通过并在 offscreen 模式启动验证** |
 | `linux-kde/` | Linux 桌面 | Qt 6 Widgets，可选 KDE Frameworks 6（KXmlGui 外壳） | **已用 Qt 6.2 编译通过**（本机无 KF6，走纯 Qt 降级分支；KDE 分支未编译验证） |
 | `linux-cli/` | 任意 Linux | C++17 + libcurl，零第三方依赖 | **已编译通过并对线上 API 实测**（`openstu-cli classes` 拉到真实班级列表） |
+| `harmony/` | HarmonyOS 5.0+ (API 12) | ArkTS + ArkUI 声明式，系统 NetworkKit / ArkData | 未编译（本机无 DevEco Studio / HarmonyOS SDK） |
 
 ## 功能范围（四个 GUI / 一个 CLI 一致）
 
@@ -57,6 +58,17 @@ cd clients/android
 ```
 
 用 Android Studio 打开 `clients/android` 目录也可以直接跑。只依赖 Compose + Material3，网络层是 `HttpURLConnection`，没有 okhttp/retrofit，便于离线构建。
+
+### 鸿蒙
+
+```bash
+# 用 DevEco Studio 5.0 打开 clients/harmony（不要打开仓库根目录）
+# 自动签名后 Run 'entry'；命令行构建：
+cd clients/harmony && hvigorw assembleHap --mode module -p product=default
+```
+
+选型说明：鸿蒙上真正成熟的是官方 **ArkTS + ArkUI**（第一方语言，Stage 模型、权限、打包链路全官方）；
+Flutter/React Native 的鸿蒙支持都是社区移植、生态滞后，KMP 的鸿蒙插件还在早期，所以没选。
 
 ### iOS
 
