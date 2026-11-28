@@ -31,6 +31,10 @@ char wifiSsid[51]     = {0};
 char wifiPassword[51] = {0};
 
 // 班级配置：密码明文也留一份（配网页回填/校验用），哈希开机时现算
+// 服务器地址：默认官方 Netlify，可在配网页改（自建 / 本地 / 别人部署的都行）
+#define DEFAULT_SERVER_HOST "os-stu.netlify.app"
+char serverHost[64] = DEFAULT_SERVER_HOST;
+
 char classId[40]           = {0};
 char classPassword[40]     = {0};
 char classPasswordHash[65] = {0};
@@ -83,6 +87,51 @@ void clearWifiConfig() {
   if (ensureFs()) LittleFS.remove(WIFI_CONFIG_FILE);
   wifiSsid[0] = '\0';
   wifiPassword[0] = '\0';
+}
+
+// ========================================
+// 服务器地址（只存 host[:port]，不带 https:// 和结尾斜杠）
+// ========================================
+#define SERVER_CONFIG_FILE "/server.txt"
+
+static bool serverHostLooksOk(const String& h) {
+  if (h.length() < 3 || h.length() >= (int)sizeof(serverHost)) return false;
+  for (size_t i = 0; i < h.length(); ++i) {
+    char c = h[i];
+    if (!(isalnum(c) || c == '.' || c == '-' || c == ':' || c == '_')) return false;
+  }
+  if (h.indexOf('.') < 0 && h != "localhost") return false;
+  return true;
+}
+
+bool loadServerConfig() {
+  if (!ensureFs()) return false;
+  File f = LittleFS.open(SERVER_CONFIG_FILE, "r");
+  if (!f) return true;                  // 没写过 = 用默认
+  String h = f.readStringUntil('\n'); h.trim();
+  f.close();
+  if (!serverHostLooksOk(h)) return true;
+  h.toCharArray(serverHost, sizeof(serverHost));
+  Serial.printf("[srv] %s\n", serverHost);
+  return true;
+}
+
+bool saveServerConfig(const char* host) {
+  String h = String(host);
+  h.trim();
+  // 允许直接粘完整 URL：去掉 https:// / http:// 和结尾的 /
+  if (h.startsWith("https://")) h = h.substring(8);
+  if (h.startsWith("http://"))  h = h.substring(7);
+  while (h.endsWith("/")) h.remove(h.length() - 1);
+  h.toLowerCase();
+  if (!serverHostLooksOk(h)) return false;
+  if (!ensureFs()) return false;
+  File f = LittleFS.open(SERVER_CONFIG_FILE, "w");
+  if (!f) return false;
+  f.println(h);
+  f.close();
+  h.toCharArray(serverHost, sizeof(serverHost));
+  return true;
 }
 
 // ========================================
@@ -188,6 +237,13 @@ static const char PAGE_HTML[] PROGMEM = R"rawliteral(
     WiFi 密码：<input type="password" name="pwd" maxlength="63" placeholder="留空 = 保持原密码"
       style="width:100%;padding:8px;margin:4px 0 16px;"><br>
 
+    <h3>服务器</h3>
+    服务器地址：<input type="text" name="server_host" maxlength="62" value="%SERVER%"
+      placeholder="os-stu.netlify.app" required
+      style="width:100%;padding:8px;margin:4px 0 6px;"><br>
+    <span style="color:#888;font-size:13px;">填你实际部署的域名（可粘完整 https:// 地址，会自动去掉协议头）；不要带 /api。</span>
+    <br><br>
+
     <h3>班级</h3>
     班级 ID：<input type="text" name="class_id" maxlength="39" value="%CLASSID%"
       placeholder="class_1780399937423" required
@@ -201,6 +257,8 @@ static const char PAGE_HTML[] PROGMEM = R"rawliteral(
     <b>保存后刷一次卡</b>才会退出配网并开始工作；刷卡即锁定，要重配只能按 RST。
   </p>
   <p style="color:#888;font-size:13px;line-height:1.6;">
+    服务器地址：官方是 <code>os-stu.netlify.app</code>；自己部署的就填自己的域名（如 <code>ostu.kdnd.fr</code>），
+    本地部署填 <code>192.168.x.x:端口</code>。<br>
     班级 ID 在网页端地址栏里能看到（形如 <code>class_1780399937423</code>）。<br>
     密码哈希由设备自己计算，不需要手动填 sha256。
   </p>
@@ -238,6 +296,7 @@ bool getWifi() {
   server.on("/", HTTP_GET, [&server]() {
     String page = FPSTR(PAGE_HTML);
     page.replace("%SSID%", escapeHtml(String(wifiSsid)));
+    page.replace("%SERVER%", escapeHtml(String(serverHost)));
     page.replace("%CLASSID%", escapeHtml(String(classId)));
     server.send(200, "text/html; charset=utf-8", page);
   });
@@ -245,6 +304,7 @@ bool getWifi() {
   server.on("/save", HTTP_POST, [&server, &saved]() {
     String ssid = server.arg("ssid");   ssid.trim();
     String pwd  = server.arg("pwd");    pwd.trim();
+    String srv  = server.arg("server_host"); srv.trim();
     String cid  = server.arg("class_id"); cid.trim();
     String cpwd = server.arg("class_pwd"); cpwd.trim();
 
@@ -253,6 +313,12 @@ bool getWifi() {
       server.send_P(200, "text/html; charset=utf-8",
         "<meta charset='utf-8'><h3>WiFi 名称或密码不合法</h3>"
         "<p>名称最多 32 字节（约 10 个汉字），密码最多 63 字节。</p><a href='/'>返回</a>");
+      return;
+    }
+    if (!saveServerConfig(srv.c_str())) {
+      server.send_P(200, "text/html; charset=utf-8",
+        "<meta charset='utf-8'><h3>服务器地址不合法</h3>"
+        "<p>填域名或 IP[:端口]，例如 os-stu.netlify.app、ostu.kdnd.fr、192.168.1.5:5000。</p><a href='/'>返回</a>");
       return;
     }
     if (!classIdLooksOk(cid)) {

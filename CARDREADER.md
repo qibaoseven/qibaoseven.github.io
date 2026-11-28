@@ -116,7 +116,7 @@ ESP8266 + 读卡芯片 + LCD1602。本版把三个物理按键全部删掉，只
 需要改的配置：只剩服务器地址（`homework.ino` 顶部）
 
 ```cpp
-#define SERVER_HOST  "os-stu.netlify.app"
+服务器地址在配网页填（默认 os-stu.netlify.app），源码里不再写死
 ```
 
 班级 ID、班级密码**不再写死在源码里**，改到配网页里填（见下一节）。

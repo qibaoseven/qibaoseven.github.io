@@ -27,7 +27,7 @@
 
 // ---------- 服务器 ----------
 // 班级 ID / 密码不再写死：配网页里填，设备自己算 sha256(密码)
-#define SERVER_HOST          "os-stu.netlify.app"
+// 服务器地址改由配网页决定（serverHost，默认 os-stu.netlify.app），见 input.h
 
 // ---------- 行为参数 ----------
 #define SUBMIT_HOUR_START    7           // 07:00 开始收
@@ -140,7 +140,7 @@ static int fetchRequired() {
   char url[192];
   snprintf(url, sizeof(url),
            "https://%s/api/class/%s/homework/required?date=%s",
-           SERVER_HOST, classId, date);
+           serverHost, classId, date);
 
   WiFiClientSecure client;
   client.setInsecure();                 // 没带根证书，省 RAM；校园内网够用
@@ -214,7 +214,7 @@ static int postUpdate(const uint8_t* uid, uint8_t len, uint8_t subjectId, bool* 
            uidJson, date, subjectId);
 
   char url[160];
-  snprintf(url, sizeof(url), "https://%s/api/class/%s/homework/update", SERVER_HOST, classId);
+  snprintf(url, sizeof(url), "https://%s/api/class/%s/homework/update", serverHost, classId);
 
   WiFiClientSecure client;
   client.setInsecure();
@@ -401,7 +401,7 @@ void setup() {
   }
 
   // 2) 配网：WiFi 或班级配置任一缺失，就开 AP 一次性补齐
-  if (!loadWifiConfig() || !loadClassConfig()) {
+  if (!loadWifiConfig() || !loadServerConfig() || !loadClassConfig()) {
     lcdset("Config AP mode", "wifi + class");
     Serial.println("[cfg] missing wifi or class config, entering AP");
     if (!getWifi()) {
