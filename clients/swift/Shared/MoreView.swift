@@ -75,6 +75,24 @@ final class MoreStore: ObservableObject {
     }
 
 
+    func addExam(sid: String, subject: String, score: Double, full: Double) async {
+        if subject.isEmpty { message = "先填科目"; return }
+        var d = data
+        var ex = d["examScores"] as? [String: Any] ?? [:]
+        var arr = ex[sid] as? [[String: Any]] ?? []
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        arr.append([
+            "id": "\(Int(Date().timeIntervalSince1970 * 1000))",
+            "date": f.string(from: Date()),
+            "name": studentName(d["scores"] as? [String: Any] ?? [:], sid),
+            "score": score, "full": full, "subject": subject
+        ])
+        ex[sid] = arr
+        d["examScores"] = ex
+        message = "✓ 已上传 \(subject) \(score)/\(full)"
+        await save(d)
+    }
+
     // MARK: 分组 / 每日汇报
 
     func groupEdit(name: String, sid: String, op: String) async {
@@ -738,33 +756,82 @@ struct PositionsPage: View {
 
 struct ExamPage: View {
     @ObservedObject var store: MoreStore
+    @State private var subject = ""
+    @State private var sid = ""
+    @State private var score = "85"
+    @State private var full = "100"
 
     var body: some View {
         List {
+            Section("上传一个分数（写 \("examScores")）") {
+                TextField("学号", text: $sid)
+                TextField("科目，如 语文", text: $subject)
+                HStack {
+                    TextField("得分", text: $score).frame(width: 70)
+                    Text("满分")
+                    TextField("满分", text: $full).frame(width: 70)
+                }
+                Button("➕ 上传这一个分数") {
+                    Task { await store.addExam(sid: sid, subject: subject,
+                                              score: Double(score) ?? 0, full: Double(full) ?? 100) }
+                }
+                if let m = store.message { Text(m).font(.caption).foregroundStyle(.secondary) }
+            }
             let exams = store.data["examScores"] as? [String: Any] ?? [:]
             let scores = store.data["scores"] as? [String: Any] ?? [:]
+            Section("统计") {
+                ForEach(subjectStats(exams), id: \.self) { st in
+                    Text("\(st.name)：\(st.count) 次  平均 \(String(format: "%.1f", st.avg))  中位 \(String(format: "%.1f", st.median))  最高 \(String(format: "%.0f", st.max))  最低 \(String(format: "%.0f", st.min))")
+                        .font(.caption)
+                }
+            }
             if exams.isEmpty { Text("（还没有考试记录）") }
-            ForEach(exams.keys.sorted(), id: \.self) { sid in
-                let rows = exams[sid] as? [[String: Any]] ?? []
-                let name = studentName(scores, sid)
-                Section("学号 \(sid) \(name)") {
+            ForEach(exams.keys.sorted(), id: \.self) { s in
+                let rows = exams[s] as? [[String: Any]] ?? []
+                Section("学号 \(s) \(studentName(scores, s))") {
                     ForEach(Array(rows.enumerated()), id: \.offset) { item in
                         let e = item.element
                         let sc = (e["score"] as? NSNumber)?.doubleValue ?? 0
-                        let full = (e["full"] as? NSNumber)?.doubleValue ?? 0
+                        let fu = (e["full"] as? NSNumber)?.doubleValue ?? 0
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("\(e["subject"] as? String ?? "") · \(e["name"] as? String ?? "")")
                                 Text(e["date"] as? String ?? "").font(.caption2).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Text(String(format: "%.0f/%.0f (%.0f%%)", sc, full, full > 0 ? sc / full * 100 : 0))
+                            Text(String(format: "%.0f/%.0f (%.0f%%)", sc, fu, fu > 0 ? sc / fu * 100 : 0))
                         }
                     }
                 }
             }
         }
         .navigationTitle("考试分数")
+    }
+}
+
+struct SubjectStat: Hashable {
+    var name: String
+    var count: Int
+    var avg: Double
+    var median: Double
+    var max: Double
+    var min: Double
+}
+
+func subjectStats(_ exams: [String: Any]) -> [SubjectStat] {
+    var bySubject: [String: [Double]] = [:]
+    for (_, v) in exams {
+        for r in v as? [[String: Any]] ?? [] {
+            let su = r["subject"] as? String ?? ""
+            bySubject[su, default: []].append((r["score"] as? NSNumber)?.doubleValue ?? 0)
+        }
+    }
+    return bySubject.keys.sorted().map { k in
+        let v = bySubject[k]!.sorted()
+        let n = v.count
+        let sum = v.reduce(0, +)
+        let med = n % 2 == 1 ? v[n / 2] : (v[n / 2 - 1] + v[n / 2]) / 2
+        return SubjectStat(name: k, count: n, avg: sum / Double(n), median: med, max: v.last ?? 0, min: v.first ?? 0)
     }
 }
 
