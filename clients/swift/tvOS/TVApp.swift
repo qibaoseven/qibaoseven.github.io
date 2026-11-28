@@ -10,6 +10,7 @@ struct TVRootView: View {
     @StateObject private var model = AppModel()
     @State private var target: (id: Int, name: String)?
     @State private var showConfig = false
+    @State private var showDevice = false
 
     var body: some View {
         VStack(spacing: 24) {
@@ -22,6 +23,7 @@ struct TVRootView: View {
                 }
                 Spacer()
                 Button("刷新") { Task { await model.refresh() } }
+                Button("设备管理") { showDevice = true }
                 Button("设置") { showConfig = true }
             }
             .padding(.horizontal, 60)
@@ -80,6 +82,7 @@ struct TVRootView: View {
                 Button("取消", role: .cancel) { target = nil }
             }
         }
+        .sheet(isPresented: $showDevice) { DeviceView(model: model).frame(width: 900, height: 700) }
         .task { if model.configured && model.required == nil { await model.refresh() } }
     }
 }

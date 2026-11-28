@@ -57,6 +57,15 @@ final class AppModel: ObservableObject {
         } catch { message = "失败: \(error.localizedDescription)" }
     }
 
+    func addUid(uid: String, studentId: Int, subjectId: Int?) async {
+        guard let date = required?.date else { message = "还没有今日数据，先刷新"; return }
+        await api.configure(server, classId, password)
+        do {
+            _ = try await api.addUid(uid: uid, studentId: studentId, subjectId: subjectId, date: date)
+            message = "已绑定 \(uid) → 学号 \(studentId)"
+        } catch { message = "绑定失败: \(error.localizedDescription)" }
+    }
+
     static func matrix(_ hw: HomeworkData, date: String) -> [Int: [Int: Bool]] {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
         guard let from = f.date(from: hw.dateFrom), let to = f.date(from: date) else { return [:] }

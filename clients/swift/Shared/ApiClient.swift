@@ -78,6 +78,14 @@ actor ApiClient {
         try JSONDecoder().decode(RequiredToday.self, from: try await call("/api/class/\(classId)/homework/required?date=\(Self.today())"))
     }
     func homework() async throws -> HomeworkData { try JSONDecoder().decode(HomeworkData.self, from: try await call("/api/class/\(classId)/homework")) }
+    func addUid(uid: String, studentId: Int, subjectId: Int? = nil, date: String? = nil) async throws -> [String: Any] {
+        var body: [String: Any] = ["uid": uid, "student_id": studentId]
+        if let subjectId { body["subject_id"] = subjectId }
+        if let date { body["target_date"] = date }
+        let data = try await call("/api/class/\(classId)/uuids/add", method: "POST", body: body)
+        return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    }
+
     func submit(studentId: Int, subjectId: Int, date: String) async throws -> SubmitResult {
         let body: [String: Any] = ["student_id": studentId, "target_date": date, "subject_id": subjectId]
         return try JSONDecoder().decode(SubmitResult.self, from: try await call("/api/class/\(classId)/homework/update", method: "POST", body: body))

@@ -1,5 +1,6 @@
 # xcodegen：在 clients/swift 目录跑 `xcodegen generate`
-# 按需求只做 macOS / tvOS / watchOS / visionOS 四个端，iOS 端明确不做。
+# 五个端都做：iOS / macOS / tvOS / watchOS / visionOS。
+# 唯一例外：iOS 的「串口 / 刷录」在系统层面无法实现，界面上明确提示，不假装可用。
 name: OpenStu
 options:
   bundleIdPrefix: io.qibaoseven
@@ -11,6 +12,22 @@ settings:
     CURRENT_PROJECT_VERSION: "46"
 
 targets:
+  OpenStuIOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: Shared
+      - path: iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.qibaoseven.openstu.ios
+        PRODUCT_NAME: OpenStu
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: OpenStu 交作业
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+
   OpenStuMac:
     type: application
     platform: macOS

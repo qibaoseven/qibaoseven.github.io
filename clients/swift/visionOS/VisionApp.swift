@@ -15,6 +15,7 @@ struct VisionRootView: View {
     @StateObject private var model = AppModel()
     @State private var target: (id: Int, name: String)?
     @State private var showConfig = false
+    @State private var showDevice = false
 
     var body: some View {
         VStack(spacing: 20) {
@@ -27,6 +28,7 @@ struct VisionRootView: View {
                 }
                 Spacer()
                 Button("刷新") { Task { await model.refresh() } }
+                Button("设备管理") { showDevice = true }
                 Button("设置") { showConfig = true }
             }
             if let req = model.required {
@@ -78,6 +80,7 @@ struct VisionRootView: View {
                 Button("取消", role: .cancel) { target = nil }
             }
         }
+        .sheet(isPresented: $showDevice) { DeviceView(model: model).frame(width: 700, height: 620) }
         .task { if model.configured && model.required == nil { await model.refresh() } }
     }
 }

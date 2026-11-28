@@ -6,7 +6,7 @@
 | 目录 | 平台 | 技术栈 | 验证状态 |
 |---|---|---|---|
 | `android/` | Android 7.0+ | Kotlin 1.9 + Jetpack Compose + HttpURLConnection | 未编译（本机无 Android SDK）；设备管理页 + Termux 刷写脚本 |
-| `swift/` | macOS 13+ / tvOS 17+ / watchOS 10+ / visionOS 1+ | Swift 5.9 + SwiftUI + URLSession + CryptoKit | 未编译（本机无 Xcode），`xcodegen` 生成四端工程；**iOS 端按需求不做** |
+| `swift/` | iOS 16+ / macOS 13+ / tvOS 17+ / watchOS 10+ / visionOS 1+ | Swift 5.9 + SwiftUI + URLSession + CryptoKit | 未编译（本机无 Xcode），`xcodegen` 生成五端工程；iOS 只缺「串口/刷录」 |
 | `qt-windows/` | Windows 10+ | Qt 6 Widgets + QNetworkAccessManager | **已用 Qt 6.2 编译通过并在 offscreen 模式启动验证** |
 | `linux-kde/` | Linux 桌面 | Qt 6 Widgets，可选 KDE Frameworks 6（KXmlGui 外壳） | **已用 Qt 6.2 编译通过**（本机无 KF6，走纯 Qt 降级分支；KDE 分支未编译验证） |
 | `linux-cli/` | 任意 Linux | C++17 + libcurl，零第三方依赖 | **已编译通过并对线上 API 实测**（`openstu-cli classes` 拉到真实班级列表） |
@@ -70,7 +70,7 @@ cd clients/harmony && hvigorw assembleHap --mode module -p product=default
 选型说明：鸿蒙上真正成熟的是官方 **ArkTS + ArkUI**（第一方语言，Stage 模型、权限、打包链路全官方）；
 Flutter/React Native 的鸿蒙支持都是社区移植、生态滞后，KMP 的鸿蒙插件还在早期，所以没选。
 
-### Swift 四端（macOS / tvOS / watchOS / visionOS）
+### Swift 五端（iOS / macOS / tvOS / watchOS / visionOS）
 
 ```bash
 cd clients/swift
@@ -82,7 +82,8 @@ open OpenStu.xcodeproj
 - `tvOS`：卡片网格 + 遥控器焦点，点卡片选科目
 - `watchOS`：单列紧凑列表，详情页逐科勾选
 - `visionOS`：玻璃材质卡片 + `hoverEffect(.lift)`，窗口内自适应网格
-- **iOS 端不做**（按需求）
+- `iOS`：完整功能（配置、进度、名册、登记、设备管理的手填 UID）；**只有串口与刷录在设备管理页明确写「无法使用」**——iOS 不向第三方开放 USB 串口
+- 五个端共用 `Shared/DeviceView.swift`，端的差异只体现在提示文案的 `platformName`
 
 ## 安全与隐私说明
 

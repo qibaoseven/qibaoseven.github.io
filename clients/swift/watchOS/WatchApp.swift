@@ -43,6 +43,9 @@ struct WatchRootView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { Task { await model.refresh() } } label: { Image(systemName: "arrow.clockwise") }
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink { DeviceView(model: model) } label: { Image(systemName: "cable.connector") }
+                }
             }
             .navigationDestination(item: $push) { st in
                 SubjectList(model: model, student: st)
