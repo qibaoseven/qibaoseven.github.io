@@ -35,6 +35,9 @@ struct DeviceView: View {
                 Button("关闭") { dismiss() }
             }
 
+            #if os(macOS)
+            MacSerialSection()
+            #else
             capabilityCard(
                 title: "⚡ 自动刷录固件",
                 reason: "\(platformName) 不向第三方开放 USB 串口，连 esptool 需要的串口端点都拿不到，因此无法在端内刷录。",
@@ -46,6 +49,7 @@ struct DeviceView: View {
                 reason: "\(platformName) 没有 Web Serial 等价能力，读不到读卡器吐的 UID 行。",
                 action: "替代：电脑上用网页端连接，或手动把 UID 抄到下面输入框。"
             )
+            #endif
 
             manualform
 
@@ -113,3 +117,40 @@ struct DeviceView: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 }
+
+#if os(macOS)
+/// macOS 专属：/dev/cu.* 串口直连，读 UID、发命令
+struct MacSerialSection: View {
+    @StateObject private var serial = MacSerial()
+    @State private var port = ""
+    @State private var cmd = "UID"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("🔌 串口连接（macOS 可用）").font(.headline)
+            HStack {
+                Picker("串口", selection: $port) {
+                    Text("未选择").tag("")
+                    ForEach(serial.ports, id: \.self) { p in Text(p).tag(p) }
+                }
+                Button("刷新") { serial.refresh() }
+                Button(serial.connected ? "断开" : "连接") {
+                    if serial.connected { serial.close() } else { serial.connect(port) }
+                }
+            }
+            HStack {
+                TextField("要发给板子的命令，如 UID", text: $cmd).textFieldStyle(.roundedBorder)
+                Button("发送") { serial.send(cmd) }
+            }
+            if !serial.lastUID.isEmpty {
+                Text("读到 UID：\(serial.lastUID)").font(.callout).textSelection(.enabled)
+            }
+            ScrollView { Text(serial.log.isEmpty ? "（还没有串口输出）" : serial.log).font(.caption2.monospaced()) }
+                .frame(height: 120)
+        }
+        .padding(12)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .onAppear { serial.refresh(); if port.isEmpty, let f = serial.ports.first { port = f } }
+    }
+}
+#endif
