@@ -176,3 +176,27 @@ void OpenStuApi::submit(int studentId, int subjectId, int typeId, const QString&
     if (typeId >= 0) body["type_id"] = typeId;
     post("/api/class/" + m_classId + "/homework/update", body, true, "submit");
 }
+
+// ---- 硬件登记 ----
+void OpenStuApi::fetchUuids() {
+    QNetworkReply* reply = m_net->get(makeRequest("/api/class/" + m_classId + "/uuids", true));
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) { emit failed(describeError(reply)); return; }
+        emit uuidsReady(QJsonDocument::fromJson(reply->readAll()).object());
+    });
+}
+
+void OpenStuApi::addUid(const QString& uidHex, int studentId) {
+    const QJsonObject body{{"uid", uidHex}, {"student_id", studentId}};
+    QNetworkReply* reply = m_net->post(makeRequest("/api/class/" + m_classId + "/uuids/add", true),
+                                       QJsonDocument(body).toJson(QJsonDocument::Compact));
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            emit uidAdded(false, describeError(reply));
+            return;
+        }
+        emit uidAdded(true, QStringLiteral("已绑定"));
+    });
+}

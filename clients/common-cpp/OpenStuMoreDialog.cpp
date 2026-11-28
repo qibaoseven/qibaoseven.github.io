@@ -31,9 +31,12 @@ OpenStuMoreDialog::OpenStuMoreDialog(OpenStuApi* api, const QJsonObject& roster,
     connect(m_api, &OpenStuApi::classDataSaved, this, &OpenStuMoreDialog::onSaved);
     connect(m_api, &OpenStuApi::metaReady, this, &OpenStuMoreDialog::onMeta);
     connect(m_api, &OpenStuApi::journalReady, this, &OpenStuMoreDialog::onJournal);
+    connect(m_api, &OpenStuApi::uuidsReady, this, &OpenStuMoreDialog::onUuids);
+    connect(m_api, &OpenStuApi::uidAdded, this, &OpenStuMoreDialog::onUidAdded);
 
     m_api->fetchClassData();
     m_api->fetchMeta();
+    m_api->fetchUuids();
 }
 
 void OpenStuMoreDialog::buildUi() {
@@ -266,6 +269,25 @@ void OpenStuMoreDialog::buildUi() {
     m_punMsg = new QLabel(punPage);
     pv->addWidget(m_punMsg);
     m_tabs->addTab(punPage, QStringLiteral("惩罚"));
+
+    // ---------------- 硬件登记 ----------------
+    auto* uidPage = new QWidget(this);
+    auto* uv = new QVBoxLayout(uidPage);
+    auto* uRow = new QHBoxLayout;
+    m_uidStudent = new QComboBox(uidPage);
+    for (const QString& sid4 : m_roster.keys())
+        m_uidStudent->addItem(nameOf(sid4) + QStringLiteral(" (") + sid4 + QStringLiteral(")"), sid4);
+    m_uidHex = new QLineEdit(uidPage);
+    m_uidHex->setPlaceholderText(QStringLiteral("UID：12:34:56:78:9A:BC:DE 或 123456789ABCDE"));
+    auto* bBind = new QPushButton(QStringLiteral("➕ 绑定这个 UID"), uidPage);
+    connect(bBind, &QPushButton::clicked, this, &OpenStuMoreDialog::bindUid);
+    uRow->addWidget(m_uidStudent); uRow->addWidget(m_uidHex); uRow->addWidget(bBind);
+    uv->addLayout(uRow);
+    m_uidView = new QPlainTextEdit(uidPage); m_uidView->setReadOnly(true);
+    uv->addWidget(m_uidView);
+    m_uidMsg = new QLabel(uidPage);
+    uv->addWidget(m_uidMsg);
+    m_tabs->addTab(uidPage, QStringLiteral("硬件登记"));
 
     m_tabs->addTab(extraPage, QStringLiteral("其它"));
 
@@ -1097,4 +1119,34 @@ void OpenStuMoreDialog::completePunishment() {
     m_api->saveClassData(m_data);
     m_punMsg->setText(QStringLiteral("已完成「%1」，金币 +%2").arg(first.value("name").toString()).arg(reward));
     refreshPunView();
+}
+
+// ======================= 硬件登记 =======================
+void OpenStuMoreDialog::onUuids(const QJsonObject& uuids) {
+    const QJsonObject map = uuids.value("uuids").toObject();
+    QString s;
+    s += QStringLiteral("已绑定 %1 个学号\n\n").arg(map.size());
+    for (auto it = map.begin(); it != map.end(); ++it) {
+        QJsonArray bytes = it.value().toArray();
+        QString hex;
+        for (const QJsonValue& b : bytes) {
+            if (!hex.isEmpty()) hex += ':';
+            hex += QString("%1").arg(b.toInt(), 2, 16, QLatin1Char('0')).toUpper();
+        }
+        s += QStringLiteral("%1  %2  →  %3\n").arg(nameOf(it.key()), it.key(), hex);
+    }
+    m_uidView->setPlainText(map.isEmpty() ? QStringLiteral("（还没有登记任何卡片）") : s);
+}
+
+void OpenStuMoreDialog::bindUid() {
+    const QString hex = m_uidHex->text().trimmed();
+    const QString sid = m_uidStudent->currentData().toString();
+    if (hex.isEmpty()) { m_uidMsg->setText(QStringLiteral("先刷卡或手填 UID")); return; }
+    m_api->addUid(hex, sid.toInt());
+    m_uidMsg->setText(QStringLiteral("正在绑定 %1 → %2").arg(hex).arg(nameOf(sid)));
+}
+
+void OpenStuMoreDialog::onUidAdded(bool ok, const QString& message) {
+    m_uidMsg->setText(ok ? QStringLiteral("✓ ") + message : QStringLiteral("失败：") + message);
+    if (ok) m_api->fetchUuids();
 }

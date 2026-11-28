@@ -45,6 +45,9 @@ private slots:
     void examAdd();
     void drawPunishment();
     void completePunishment();
+    void bindUid();
+    void onUuids(const QJsonObject& uuids);
+    void onUidAdded(bool ok, const QString& message);
 
 private:
     void buildUi();
@@ -89,6 +92,11 @@ private:
     QComboBox* m_punStudent = nullptr;
     QPlainTextEdit* m_punView = nullptr;
     QLabel* m_punMsg = nullptr;
+    // 硬件登记
+    QComboBox* m_uidStudent = nullptr;
+    QLineEdit* m_uidHex = nullptr;
+    QPlainTextEdit* m_uidView = nullptr;
+    QLabel* m_uidMsg = nullptr;
     // 日志
     QPlainTextEdit* m_logs = nullptr;
     // 初始化

@@ -33,6 +33,9 @@ public:
     void initHomework(int studentCount, const QStringList& subjects);
     void fetchJournal(int studentId);
     void addJournal(int studentId, const QString& text);
+    // ---- 硬件登记（UID ↔ 学号）----
+    void fetchUuids();
+    void addUid(const QString& uidHex, int studentId);
 
 signals:
     void classesReady(const QJsonArray& classes);
@@ -44,6 +47,8 @@ signals:
     void classDataSaved(bool ok, const QString& message);
     void metaReady(const QJsonObject& meta);
     void journalReady(int studentId, const QString& text);
+    void uuidsReady(const QJsonObject& uuids);
+    void uidAdded(bool ok, const QString& message);
     void failed(const QString& message);
 
 private:
