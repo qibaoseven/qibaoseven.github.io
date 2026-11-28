@@ -173,10 +173,66 @@ jobs:
           if-no-files-found: ignore
 
   harmony:
-    name: Harmony（本机无 DevEco，跳过）
+    name: Harmony（安装 hvigor + SDK 真编译，失败不阻塞 release）
     runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      DEVECO_SDK_HOME: ${{ github.workspace }}/hos-sdk
+      HOS_CLI_URL: ${{ secrets.HOS_CLI_URL }}
     steps:
-      - run: echo "鸿蒙工程需要 DevEco Studio / hvigor 私有工具链，公开 runner 装不了，这里只保证源码在仓库里。"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 安装 hvigor / ohpm（华为 npm 源）
+        run: |
+          npm config set registry https://repo.harmonyos.com/npm/
+          npm install -g @ohos/hvigor @ohos/hvigor-ohos-plugin ohpm 2>&1 | tail -5
+          hvigorw --version || true
+
+      - name: 获取 HarmonyOS 命令行工具（DevEco command-line-tools）
+        id: sdk
+        run: |
+          mkdir -p "$DEVECO_SDK_HOME"
+          urls=(
+            "$HOS_CLI_URL"
+            "https://contentcenter-vali-drcn.dbankcdn.cn/pvt_2efc9c3925m2/v2/commandline-tools-linux-x64-5.0.5.200.zip"
+            "https://repo.huaweicloud.com/harmonyos/ide/commandline-tools-linux-x64.zip"
+          )
+          ok=0
+          for u in "${urls[@]}"; do
+            [ -z "$u" ] && continue
+            echo "尝试 $u"
+            if curl -fsSL -m 300 -o cli.zip "$u" && unzip -q -o cli.zip -d "$DEVECO_SDK_HOME"; then ok=1; break; fi
+          done
+          if [ "$ok" = "1" ]; then
+            find "$DEVECO_SDK_HOME" -maxdepth 2 -type d | head -10
+            echo "SDK_OK=1" >> "$GITHUB_ENV"
+          else
+            echo "::warning::公开 runner 拿不到华为账号授权的 commandline-tools；请在 Secrets 里配 HOS_CLI_URL（自家镜像/内网地址），或改用自托管 runner。"
+            echo "SDK_OK=0" >> "$GITHUB_ENV"
+          fi
+
+      - name: 编译 HAP
+        if: env.SDK_OK == '1'
+        working-directory: clients/harmony
+        run: |
+          export PATH="$DEVECO_SDK_HOME/command-line-tools/bin:$DEVECO_SDK_HOME/bin:$PATH"
+          [ -f hvigorw ] || cp -r "$DEVECO_SDK_HOME"/command-line-tools/hvigor/* . 2>/dev/null || true
+          chmod +x hvigorw 2>/dev/null || true
+          hvigorw --version || hvigor --version || true
+          hvigorw assembleHap --mode module -p product=default -p buildMode=debug --no-daemon 2>&1 | tail -40
+
+      - name: 结果说明
+        if: always()
+        run: |
+          if [ "$SDK_OK" != "1" ]; then
+            echo "本次没有编译产物：HarmonyOS SDK 需从华为开发者站下载（要登录同意协议），公开 runner 拉不到。"
+            echo "解决办法：1) 在仓库 Secrets 配 HOS_CLI_URL 指向可直链的 commandline-tools zip；2) 或用自托管 runner 预装 DevEco。"
+          else
+            echo "已实际编译，见上一步日志。"
+          fi
 
   release:
     name: 发布到 native-latest

@@ -224,6 +224,30 @@ void OpenStuMoreDialog::buildUi() {
     repv->addWidget(m_reportMsg);
     m_tabs->addTab(reportPage, QStringLiteral("每日汇报"));
 
+    // ---------------- 考试分数 ----------------
+    auto* examPage = new QWidget(this);
+    auto* exv = new QVBoxLayout(examPage);
+    auto* exRow = new QHBoxLayout;
+    m_examStudent = new QComboBox(examPage);
+    for (const QString& sid2 : m_roster.keys())
+        m_examStudent->addItem(nameOf(sid2) + QStringLiteral(" (") + sid2 + QStringLiteral(")"), sid2);
+    m_examSubject = new QLineEdit(examPage);
+    m_examSubject->setPlaceholderText(QStringLiteral("科目，如 语文"));
+    m_examScore = new QDoubleSpinBox(examPage); m_examScore->setRange(0, 1000); m_examScore->setValue(85);
+    m_examFull = new QDoubleSpinBox(examPage); m_examFull->setRange(1, 1000); m_examFull->setValue(100);
+    auto* bExAdd = new QPushButton(QStringLiteral("➕ 上传这一个分数"), examPage);
+    connect(bExAdd, &QPushButton::clicked, this, &OpenStuMoreDialog::examAdd);
+    exRow->addWidget(m_examStudent); exRow->addWidget(m_examSubject);
+    exRow->addWidget(new QLabel(QStringLiteral("得分"), examPage)); exRow->addWidget(m_examScore);
+    exRow->addWidget(new QLabel(QStringLiteral("满分"), examPage)); exRow->addWidget(m_examFull);
+    exRow->addWidget(bExAdd);
+    exv->addLayout(exRow);
+    m_examView = new QPlainTextEdit(examPage); m_examView->setReadOnly(true);
+    exv->addWidget(m_examView);
+    m_examMsg = new QLabel(examPage);
+    exv->addWidget(m_examMsg);
+    m_tabs->addTab(examPage, QStringLiteral("考试"));
+
     m_tabs->addTab(extraPage, QStringLiteral("其它"));
 
     // ---------- 自动事件 ----------
@@ -387,6 +411,7 @@ void OpenStuMoreDialog::onData(const QJsonObject& data) {
     fillTable();
     refreshGroupsView();
     refreshReportView();
+    refreshExamView();
     m_msg->setText(QStringLiteral("已加载：%1 人 · %2 条日志")
                        .arg(m_data.value("scores").toObject().size())
                        .arg(m_data.value("logs").toArray().size()));
@@ -887,4 +912,61 @@ void OpenStuMoreDialog::reportBatchApply() {
     m_reportMsg->setText(QStringLiteral("已对 %1 人批量 %2%3").arg(n).arg(v > 0 ? "+" : "").arg(v));
     refreshReportView();
     fillTable();
+}
+
+// ======================= 考试 =======================
+void OpenStuMoreDialog::refreshExamView() {
+    if (!m_examView) return;
+    const QJsonObject ex = m_data.value("examScores").toObject();
+    QString s;
+    QMap<QString, QList<double>> bySubject;
+    QMap<QString, double> byStudent;
+    for (auto it = ex.begin(); it != ex.end(); ++it) {
+        for (const QJsonValue& rv : it.value().toArray()) {
+            const QJsonObject r = rv.toObject();
+            bySubject[r.value("subject").toString()].append(r.value("score").toDouble());
+            byStudent[nameOf(it.key())] += r.value("score").toDouble();
+        }
+    }
+    for (auto it = bySubject.begin(); it != bySubject.end(); ++it) {
+        QList<double> v = it.value();
+        std::sort(v.begin(), v.end());
+        const int n = v.size();
+        const double median = n % 2 ? v[n / 2] : (v[n / 2 - 1] + v[n / 2]) / 2.0;
+        double sum = 0; for (double x : v) sum += x;
+        s += QStringLiteral("▸ %1（%2 次） 平均 %3 中位 %4 最高 %5 最低 %6\n")
+                 .arg(it.key()).arg(n).arg(sum / n, 0, 'f', 1).arg(median, 0, 'f', 1)
+                 .arg(v.last()).arg(v.first());
+    }
+    if (!byStudent.isEmpty()) {
+        s += QStringLiteral("\n学生总分：\n");
+        QList<QPair<double, QString>> order;
+        for (auto it = byStudent.begin(); it != byStudent.end(); ++it) order.append({it.value(), it.key()});
+        std::sort(order.begin(), order.end(), [](auto& a, auto& b) { return a.first > b.first; });
+        for (auto& p : order) s += QStringLiteral("  %1  %2\n").arg(p.second).arg(p.first, 0, 'f', 0);
+    }
+    m_examView->setPlainText(s.isEmpty() ? QStringLiteral("（还没有考试数据）") : s);
+}
+
+void OpenStuMoreDialog::examAdd() {
+    const QString sid = m_examStudent->currentData().toString();
+    const QString subject = m_examSubject->text().trimmed();
+    if (sid.isEmpty() || subject.isEmpty()) { m_examMsg->setText(QStringLiteral("先选学生并填科目")); return; }
+    QJsonObject ex = m_data.value("examScores").toObject();
+    QJsonArray arr = ex.value(sid).toArray();
+    const QString id = QString::number(QDateTime::currentMSecsSinceEpoch());
+    arr.append(QJsonObject{
+        {"id", id},
+        {"date", QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"))},
+        {"name", nameOf(sid)},
+        {"score", m_examScore->value()},
+        {"full", m_examFull->value()},
+        {"subject", subject}
+    });
+    ex[sid] = arr;
+    m_data["examScores"] = ex;
+    m_api->saveClassData(m_data);
+    m_examMsg->setText(QStringLiteral("已上传：%1 %2 %3/%4").arg(nameOf(sid)).arg(subject)
+                           .arg(m_examScore->value()).arg(m_examFull->value()));
+    refreshExamView();
 }

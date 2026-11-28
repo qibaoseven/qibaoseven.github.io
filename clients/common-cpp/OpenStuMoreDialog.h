@@ -42,12 +42,14 @@ private slots:
     void reportMarkAll();
     void reportReset();
     void reportBatchApply();
+    void examAdd();
 
 private:
     void buildUi();
     void fillTable();
     void refreshGroupsView();
     void refreshReportView();
+    void refreshExamView();
     QString sidOf(int row) const;
     QString nameOf(const QString& sid) const;
 
@@ -73,6 +75,13 @@ private:
     QDoubleSpinBox* m_reportDelta = nullptr;
     QLineEdit* m_reportReason = nullptr;
     QLabel* m_reportMsg = nullptr;
+    // 考试
+    QComboBox* m_examStudent = nullptr;
+    QLineEdit* m_examSubject = nullptr;
+    QDoubleSpinBox* m_examScore = nullptr;
+    QDoubleSpinBox* m_examFull = nullptr;
+    QPlainTextEdit* m_examView = nullptr;
+    QLabel* m_examMsg = nullptr;
     // 日志
     QPlainTextEdit* m_logs = nullptr;
     // 初始化
