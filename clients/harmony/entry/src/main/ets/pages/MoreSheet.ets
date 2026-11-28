@@ -29,6 +29,9 @@ export struct MoreSheet {
   @State reportLines: string[] = [];
   @State batchDelta: string = '2';
   @State batchReason: string = '';
+  @State uidSid: string = '';
+  @State uidHex: string = '';
+  @State uidLines: string[] = [];
 
   aboutToAppear(): void {
     this.reload();
@@ -60,6 +63,7 @@ export struct MoreSheet {
       this.eventLines = ClassApi.eventLines(json);
       this.groupLines = ClassApi.groupLines(json);
       this.reportLines = ClassApi.reportText(json);
+      this.uidLines = await ClassApi.uuidsText();
     } catch (e) {
       this.msg = '读取失败：' + (e as Error).message;
     }
@@ -86,6 +90,17 @@ export struct MoreSheet {
       await this.reload();
     } catch (e) {
       this.msg = '失败：' + (e as Error).message;
+    }
+    this.busy = false;
+  }
+
+  async doBindUid(): Promise<void> {
+    this.busy = true;
+    try {
+      this.msg = await ClassApi.bindUid(this.uidHex.trim(), Number(this.uidSid));
+      this.uidLines = await ClassApi.uuidsText();
+    } catch (e) {
+      this.msg = '绑定失败：' + (e as Error).message;
     }
     this.busy = false;
   }
@@ -180,7 +195,7 @@ export struct MoreSheet {
   @Builder
   tabBar() {
     Row({ space: 6 }) {
-      ForEach(['分数', '金币', '日志', '初始化', '历程', '分组', '汇报', '其它', '自动'], (label: string, i: number) => {
+      ForEach(['分数', '金币', '日志', '初始化', '历程', '分组', '汇报', '硬件', '其它', '自动'], (label: string, i: number) => {
         Button(label)
           .fontSize(12)
           .backgroundColor(this.tab === i ? '#3478f6' : '#f2f2f2')
@@ -265,7 +280,7 @@ export struct MoreSheet {
             }, (t: string, i: number) => `${i}-${t}`)
           }
 
-          if (this.tab === 8) {
+          if (this.tab === 9) {
             Text('自动事件（规则同网页：daily / weekly / monthly，同一天只跑一次）')
               .fontSize(11).fontColor('#888888').width('100%')
             ForEach(this.eventLines, (l: string) => {
@@ -316,6 +331,20 @@ export struct MoreSheet {
           }
 
           if (this.tab === 7) {
+            Text('硬件登记（手填 UID 绑定学号，和网页 /uuids/add 一致）')
+              .fontSize(11).fontColor('#888888').width('100%')
+            TextInput({ placeholder: '学号', text: this.uidSid })
+              .onChange((v: string) => { this.uidSid = v; })
+            TextInput({ placeholder: 'UID：12:34:56:78:9A:BC:DE', text: this.uidHex })
+              .onChange((v: string) => { this.uidHex = v; })
+            Button('➕ 绑定这个 UID').fontSize(13).onClick(() => { this.doBindUid(); })
+            ForEach(this.uidLines, (l: string) => {
+              Text(l).fontSize(11).fontColor('#555555').width('100%').padding(6)
+                .backgroundColor(Color.White).borderRadius(6)
+            }, (l: string, i: number) => `${i}-${l}`)
+          }
+
+          if (this.tab === 8) {
             Text('职位 / 考试 / 备份 / 账号（只读）').fontSize(12).fontWeight(FontWeight.Bold)
             ForEach(this.extra, (l: string) => {
               Text(l).fontSize(11).fontColor('#555555').width('100%').padding(6)

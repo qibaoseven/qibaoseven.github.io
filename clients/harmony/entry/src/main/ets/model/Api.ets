@@ -836,4 +836,42 @@ export class ClassApi {
     await ClassApi.save(JSON.stringify(d));
     return `✓ 已对 ${n} 人批量 ${value > 0 ? '+' : ''}${value}`;
   }
+
+  /** 已登记 UID 列表 */
+  static async uuidsText(): Promise<string[]> {
+    const out: string[] = [];
+    try {
+      const r = await Api.request(`/api/class/${Api.classId}/uuids`, http.RequestMethod.GET);
+      if (!r.ok()) throw new Error('HTTP ' + r.code);
+      const o = JSON.parse(r.body) as Record<string, Object>;
+      const map = o['uuids'] as Record<string, Object>;
+      if (map === undefined) return ['（还没有登记任何卡片）'];
+      Object.keys(map).forEach((sid) => {
+        const bytes = map[sid] as Object[];
+        const parts: string[] = [];
+        if (Array.isArray(bytes)) {
+          bytes.forEach((b) => parts.push((b as number).toString(16).toUpperCase().padStart(2, '0')));
+        }
+        out.push(`${sid}  →  ${parts.join(':')}`);
+      });
+    } catch (e) {
+      out.push('UID 读取失败：' + (e as Error).message);
+    }
+    return out.length > 0 ? out : ['（还没有登记任何卡片）'];
+  }
+
+  /** 绑定 UID 到学号 */
+  static async bindUid(uid: string, sid: number): Promise<string> {
+    const body: Record<string, Object> = {};
+    body['uid'] = uid;
+    body['student_id'] = sid;
+    try {
+      const r = await Api.request(`/api/class/${Api.classId}/uuids/add`, http.RequestMethod.POST,
+        JSON.stringify(body));
+      if (!r.ok()) return '绑定失败：HTTP ' + r.code;
+      return `✓ 已绑定 ${uid} → ${sid}`;
+    } catch (e) {
+      return '绑定失败：' + (e as Error).message;
+    }
+  }
 }
