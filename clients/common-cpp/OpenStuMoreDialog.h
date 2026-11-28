@@ -35,10 +35,19 @@ private slots:
     void paySalaries();
     void runEvents();
     void addEvent();
+    void groupCreate();
+    void groupDelete();
+    void groupAdd();
+    void groupRemove();
+    void reportMarkAll();
+    void reportReset();
+    void reportBatchApply();
 
 private:
     void buildUi();
     void fillTable();
+    void refreshGroupsView();
+    void refreshReportView();
     QString sidOf(int row) const;
     QString nameOf(const QString& sid) const;
 
@@ -54,6 +63,16 @@ private:
     QLineEdit* m_reason = nullptr;
     QComboBox* m_studentsForGacha = nullptr;
     QLabel* m_msg = nullptr;
+    // 分组
+    QLineEdit* m_groupName = nullptr;
+    QComboBox* m_groupMember = nullptr;
+    QPlainTextEdit* m_groupView = nullptr;
+    QLabel* m_groupMsg = nullptr;
+    // 每日汇报
+    QPlainTextEdit* m_reportView = nullptr;
+    QDoubleSpinBox* m_reportDelta = nullptr;
+    QLineEdit* m_reportReason = nullptr;
+    QLabel* m_reportMsg = nullptr;
     // 日志
     QPlainTextEdit* m_logs = nullptr;
     // 初始化

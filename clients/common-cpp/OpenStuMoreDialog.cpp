@@ -162,6 +162,68 @@ void OpenStuMoreDialog::buildUi() {
     auto* bPay = new QPushButton(QStringLiteral("给所有班干发工资（进金币）"), extraPage);
     connect(bPay, &QPushButton::clicked, this, &OpenStuMoreDialog::paySalaries);
     ev->addWidget(bPay);
+    // ---------------- 分组管理 ----------------
+    auto* groupPage = new QWidget(this);
+    auto* gpv = new QVBoxLayout(groupPage);
+    auto* gRow = new QHBoxLayout;
+    m_groupName = new QLineEdit(groupPage);
+    m_groupName->setPlaceholderText(QStringLiteral("分组名，如 第一组"));
+    m_groupMember = new QComboBox(groupPage);
+    for (const QString& sid : m_roster.keys()) {
+        const QString nm = nameOf(sid);
+        m_groupMember->addItem(nm + QStringLiteral(" (") + sid + QStringLiteral(")"), sid);
+    }
+    gRow->addWidget(m_groupName);
+    gRow->addWidget(m_groupMember);
+    gpv->addLayout(gRow);
+    auto* gBtns = new QHBoxLayout;
+    auto* bGC = new QPushButton(QStringLiteral("创建分组"), groupPage);
+    auto* bGD = new QPushButton(QStringLiteral("删除分组"), groupPage);
+    auto* bGA = new QPushButton(QStringLiteral("➕ 加入选中学生"), groupPage);
+    auto* bGR = new QPushButton(QStringLiteral("➖ 移出选中学生"), groupPage);
+    connect(bGC, &QPushButton::clicked, this, &OpenStuMoreDialog::groupCreate);
+    connect(bGD, &QPushButton::clicked, this, &OpenStuMoreDialog::groupDelete);
+    connect(bGA, &QPushButton::clicked, this, &OpenStuMoreDialog::groupAdd);
+    connect(bGR, &QPushButton::clicked, this, &OpenStuMoreDialog::groupRemove);
+    gBtns->addWidget(bGC); gBtns->addWidget(bGD); gBtns->addWidget(bGA); gBtns->addWidget(bGR);
+    gpv->addLayout(gBtns);
+    m_groupView = new QPlainTextEdit(groupPage);
+    m_groupView->setReadOnly(true);
+    gpv->addWidget(m_groupView);
+    m_groupMsg = new QLabel(groupPage);
+    gpv->addWidget(m_groupMsg);
+    m_tabs->addTab(groupPage, QStringLiteral("分组"));
+
+    // ---------------- 每日汇报 ----------------
+    auto* reportPage = new QWidget(this);
+    auto* repv = new QVBoxLayout(reportPage);
+    m_reportView = new QPlainTextEdit(reportPage);
+    m_reportView->setReadOnly(true);
+    repv->addWidget(m_reportView);
+    auto* rRow = new QHBoxLayout;
+    m_reportDelta = new QDoubleSpinBox(reportPage);
+    m_reportDelta->setRange(-20, 20);
+    m_reportDelta->setSingleStep(0.5);
+    m_reportDelta->setValue(2);
+    m_reportReason = new QLineEdit(reportPage);
+    m_reportReason->setPlaceholderText(QStringLiteral("批量加分原因，如 完成今日作业"));
+    rRow->addWidget(new QLabel(QStringLiteral("全班加减"), reportPage));
+    rRow->addWidget(m_reportDelta);
+    rRow->addWidget(m_reportReason);
+    repv->addLayout(rRow);
+    auto* rBtns = new QHBoxLayout;
+    auto* bAll = new QPushButton(QStringLiteral("✅ 全部已汇报"), reportPage);
+    auto* bApply = new QPushButton(QStringLiteral("⬇ 批量应用到全班"), reportPage);
+    auto* bReset = new QPushButton(QStringLiteral("↺ 重置今日汇报"), reportPage);
+    connect(bAll, &QPushButton::clicked, this, &OpenStuMoreDialog::reportMarkAll);
+    connect(bApply, &QPushButton::clicked, this, &OpenStuMoreDialog::reportBatchApply);
+    connect(bReset, &QPushButton::clicked, this, &OpenStuMoreDialog::reportReset);
+    rBtns->addWidget(bAll); rBtns->addWidget(bApply); rBtns->addWidget(bReset);
+    repv->addLayout(rBtns);
+    m_reportMsg = new QLabel(reportPage);
+    repv->addWidget(m_reportMsg);
+    m_tabs->addTab(reportPage, QStringLiteral("每日汇报"));
+
     m_tabs->addTab(extraPage, QStringLiteral("其它"));
 
     // ---------- 自动事件 ----------
@@ -323,6 +385,8 @@ QString OpenStuMoreDialog::nameOf(const QString& sid) const {
 void OpenStuMoreDialog::onData(const QJsonObject& data) {
     m_data = data;
     fillTable();
+    refreshGroupsView();
+    refreshReportView();
     m_msg->setText(QStringLiteral("已加载：%1 人 · %2 条日志")
                        .arg(m_data.value("scores").toObject().size())
                        .arg(m_data.value("logs").toArray().size()));
@@ -649,4 +713,178 @@ void OpenStuMoreDialog::appendJournal() {
     const int sid = m_journalStudent->currentData().toInt();
     m_api->addJournal(sid, text);
     m_api->fetchJournal(sid);
+}
+
+// ======================= 分组管理 =======================
+void OpenStuMoreDialog::refreshGroupsView() {
+    if (!m_groupView) return;
+    const QJsonObject groups = m_data.value("groups").toObject();
+    const QJsonObject scores = m_data.value("scores").toObject();
+    QString s;
+    if (groups.isEmpty()) s = QStringLiteral("（还没有分组，建一个试试）\n");
+    for (auto it = groups.begin(); it != groups.end(); ++it) {
+        const QJsonArray members = it.value().toArray();
+        double sum = 0; int n = 0; QStringList names;
+        for (const QJsonValue& mv : members) {
+            const QString sid = mv.toString();
+            const QJsonValue& sv = scores.value(sid);
+            double sc = sv.isArray() ? sv.toArray().at(1).toDouble()
+                                     : sv.toObject().value("score").toDouble();
+            sum += sc; n++;
+            names << nameOf(sid);
+        }
+        s += QStringLiteral("▸ %1（%2 人，均分 %3）\n    成员：%4\n\n")
+                 .arg(it.key()).arg(n).arg(n ? sum / n : 0.0)
+                 .arg(names.isEmpty() ? QStringLiteral("（空）") : names.join(QStringLiteral("、")));
+    }
+    m_groupView->setPlainText(s);
+}
+
+void OpenStuMoreDialog::groupCreate() {
+    const QString g = m_groupName->text().trimmed();
+    if (g.isEmpty()) { m_groupMsg->setText(QStringLiteral("先填分组名")); return; }
+    QJsonObject groups = m_data.value("groups").toObject();
+    if (groups.contains(g)) { m_groupMsg->setText(QStringLiteral("分组已存在：") + g); return; }
+    groups[g] = QJsonArray();
+    m_data["groups"] = groups;
+    m_api->saveClassData(m_data);
+    m_groupMsg->setText(QStringLiteral("已创建分组：") + g);
+    refreshGroupsView();
+}
+
+void OpenStuMoreDialog::groupDelete() {
+    const QString g = m_groupName->text().trimmed();
+    QJsonObject groups = m_data.value("groups").toObject();
+    if (!groups.contains(g)) { m_groupMsg->setText(QStringLiteral("没有这个分组：") + g); return; }
+    groups.remove(g);
+    m_data["groups"] = groups;
+    m_api->saveClassData(m_data);
+    m_groupMsg->setText(QStringLiteral("已删除分组：") + g);
+    refreshGroupsView();
+}
+
+void OpenStuMoreDialog::groupAdd() {
+    const QString g = m_groupName->text().trimmed();
+    const QString sid = m_groupMember->currentData().toString();
+    QJsonObject groups = m_data.value("groups").toObject();
+    if (!groups.contains(g)) { m_groupMsg->setText(QStringLiteral("先创建或选中已存在的分组名")); return; }
+    QJsonArray members = groups.value(g).toArray();
+    bool has = false;
+    for (const QJsonValue& v : members) if (v.toString() == sid) has = true;
+    if (!has) members.append(sid);
+    groups[g] = members;
+    m_data["groups"] = groups;
+    m_api->saveClassData(m_data);
+    m_groupMsg->setText(QStringLiteral("已把 %1 加入「%2」").arg(nameOf(sid)).arg(g));
+    refreshGroupsView();
+}
+
+void OpenStuMoreDialog::groupRemove() {
+    const QString g = m_groupName->text().trimmed();
+    const QString sid = m_groupMember->currentData().toString();
+    QJsonObject groups = m_data.value("groups").toObject();
+    if (!groups.contains(g)) { m_groupMsg->setText(QStringLiteral("没有这个分组：") + g); return; }
+    QJsonArray members = groups.value(g).toArray();
+    QJsonArray keep;
+    for (const QJsonValue& v : members) if (v.toString() != sid) keep.append(v);
+    groups[g] = keep;
+    m_data["groups"] = groups;
+    m_api->saveClassData(m_data);
+    m_groupMsg->setText(QStringLiteral("已把 %1 移出「%2」").arg(nameOf(sid)).arg(g));
+    refreshGroupsView();
+}
+
+// ======================= 每日汇报 =======================
+static QString reportToday() {
+    return QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
+}
+
+void OpenStuMoreDialog::refreshReportView() {
+    if (!m_reportView) return;
+    const QJsonObject dr = m_data.value("dailyReport").toObject();
+    const QString today = reportToday();
+    const QJsonObject t = dr.value(today).toObject();
+    QString s = QStringLiteral("今日 %1\n状态：%2\n最后汇报：%3\n\n最近 7 天：\n")
+                    .arg(today)
+                    .arg(t.value("allReported").toBool() ? QStringLiteral("✅ 全部已汇报") : QStringLiteral("⏳ 进行中"))
+                    .arg(t.value("lastReportTime").toString(QStringLiteral("（无）")));
+    for (auto it = dr.begin(); it != dr.end(); ++it) {
+        s += QStringLiteral("  %1  %2\n").arg(it.key())
+                 .arg(it.value().toObject().value("allReported").toBool() ? QStringLiteral("全部已汇报")
+                                                                          : QStringLiteral("未全部汇报"));
+    }
+    m_reportView->setPlainText(s);
+}
+
+void OpenStuMoreDialog::reportMarkAll() {
+    QJsonObject dr = m_data.value("dailyReport").toObject();
+    QJsonObject today = dr.value(reportToday()).toObject();
+    today["allReported"] = true;
+    today["lastReportTime"] = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"));
+    dr[reportToday()] = today;
+    m_data["dailyReport"] = dr;
+    m_api->saveClassData(m_data);
+    m_reportMsg->setText(QStringLiteral("已标记全班已汇报"));
+    refreshReportView();
+}
+
+void OpenStuMoreDialog::reportReset() {
+    QJsonObject dr = m_data.value("dailyReport").toObject();
+    dr.remove(reportToday());
+    m_data["dailyReport"] = dr;
+    m_api->saveClassData(m_data);
+    m_reportMsg->setText(QStringLiteral("已重置今日汇报状态"));
+    refreshReportView();
+}
+
+void OpenStuMoreDialog::reportBatchApply() {
+    const double v = m_reportDelta->value();
+    const QString reason = m_reportReason->text().trimmed();
+    if (qFuzzyIsNull(v)) { m_reportMsg->setText(QStringLiteral("加减值不能为 0")); return; }
+    QJsonObject scores = m_data.value("scores").toObject();
+    QJsonArray logs = m_data.value("logs").toArray();
+    int n = 0;
+    for (auto it = scores.begin(); it != scores.end(); ++it) {
+        if (it.key() == QStringLiteral("0")) continue;
+        const QJsonValue before = it.value();
+        QString name = QStringLiteral("学号") + it.key();
+        double oldScore = 0, newScore = 0;
+        if (before.isArray()) {
+            QJsonArray a = before.toArray();
+            name = a.at(0).toString(name);
+            oldScore = a.at(1).toDouble();
+            newScore = oldScore + v;
+            a.replace(1, newScore);
+            scores[it.key()] = a;
+        } else {
+            QJsonObject o = before.toObject();
+            name = o.value("name").toString(name);
+            oldScore = o.value("score").toDouble();
+            newScore = oldScore + v;
+            o["score"] = newScore;
+            scores[it.key()] = o;
+        }
+        logs.insert(0, QJsonObject{
+            {"timestamp", QDateTime::currentDateTime().toString(QStringLiteral("yyyy/MM/dd HH:mm:ss"))},
+            {"action", QStringLiteral("每日汇报批量加分")},
+            {"student_id", it.key()}, {"student_name", name},
+            {"score_change", v}, {"current_score", newScore},
+            {"reason", reason.isEmpty() ? QStringLiteral("每日汇报") : reason},
+            {"page", QStringLiteral("qt")}, {"user_role", QStringLiteral("teacher")}
+        });
+        n++;
+    }
+    while (logs.size() > 2000) logs.removeLast();
+    m_data["scores"] = scores;
+    m_data["logs"] = logs;
+    QJsonObject dr = m_data.value("dailyReport").toObject();
+    QJsonObject today = dr.value(reportToday()).toObject();
+    today["allReported"] = true;
+    today["lastReportTime"] = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"));
+    dr[reportToday()] = today;
+    m_data["dailyReport"] = dr;
+    m_api->saveClassData(m_data);
+    m_reportMsg->setText(QStringLiteral("已对 %1 人批量 %2%3").arg(n).arg(v > 0 ? "+" : "").arg(v));
+    refreshReportView();
+    fillTable();
 }
