@@ -74,6 +74,85 @@ final class MoreStore: ObservableObject {
         await save(d)
     }
 
+
+    // MARK: 分组 / 每日汇报
+
+    func groupEdit(name: String, sid: String, op: String) async {
+        let g = name.trimmingCharacters(in: .whitespaces)
+        if g.isEmpty { message = "先填分组名"; return }
+        var d = data
+        var groups = d["groups"] as? [String: Any] ?? [:]
+        switch op {
+        case "create":
+            if groups[g] != nil { message = "分组已存在：\(g)"; return }
+            groups[g] = [Any]()
+        case "delete":
+            guard groups[g] != nil else { message = "没有这个分组：\(g)"; return }
+            groups.removeValue(forKey: g)
+        default:
+            guard let mem = groups[g] as? [Any] else { message = "没有这个分组：\(g)"; return }
+            var ids = mem.map { "\($0)" }
+            if op == "add" { if !ids.contains(sid) { ids.append(sid) } }
+            else { ids.removeAll { $0 == sid } }
+            groups[g] = ids as [Any]
+        }
+        d["groups"] = groups
+        message = "✓ 分组「\(g)」已更新"
+        await save(d)
+    }
+
+    func reportWrite(op: String) async {
+        var d = data
+        var dr = d["dailyReport"] as? [String: Any] ?? [:]
+        let today = todayText()
+        if op == "reset" {
+            dr.removeValue(forKey: today)
+            message = "✓ 已重置今日汇报"
+        } else {
+            let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
+            dr[today] = ["allReported": true, "lastReportTime": f.string(from: Date())]
+            message = "✓ 已标记全班已汇报"
+        }
+        d["dailyReport"] = dr
+        await save(d)
+    }
+
+    func reportBatch(delta: Double, reason: String) async {
+        if delta == 0 { message = "加减值不能为 0"; return }
+        var d = data
+        guard let scores = d["scores"] as? [String: Any] else { message = "班级没有 scores"; return }
+        var newScores = scores
+        var n = 0
+        for (sid, value) in scores {
+            if sid == "0" { continue }
+            var name = "学号\(sid)"
+            var ns = 0.0
+            if var arr = value as? [Any], arr.count > 1 {
+                name = arr[0] as? String ?? name
+                let old = (arr[1] as? NSNumber)?.doubleValue ?? 0
+                ns = old + delta
+                arr[1] = ns
+                newScores[sid] = arr
+            } else if var obj = value as? [String: Any] {
+                name = obj["name"] as? String ?? name
+                let old = (obj["score"] as? NSNumber)?.doubleValue ?? 0
+                ns = old + delta
+                obj["score"] = ns
+                newScores[sid] = obj
+            }
+            appendLog(&d, action: "每日汇报批量加分", sid: sid, name: name,
+                      change: delta, current: ns, reason: reason.isEmpty ? "每日汇报" : reason)
+            n += 1
+        }
+        d["scores"] = newScores
+        var dr = d["dailyReport"] as? [String: Any] ?? [:]
+        let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
+        dr[todayText()] = ["allReported": true, "lastReportTime": f.string(from: Date())]
+        d["dailyReport"] = dr
+        message = "✓ 已对 \(n) 人批量 \(delta > 0 ? "+" : "")\(delta)"
+        await save(d)
+    }
+
     private func appendLog(_ d: inout [String: Any], action: String, sid: String, name: String,
                            change: Double, current: Double, reason: String) {
         let f = DateFormatter(); f.dateFormat = "yyyy/MM/dd HH:mm:ss"
@@ -545,20 +624,34 @@ struct LogsPage: View {
 
 struct GroupsPage: View {
     @ObservedObject var store: MoreStore
+    @State private var name = ""
+    @State private var sid = ""
+    @State private var msg: String?
 
     var body: some View {
         List {
+            Section("建组 / 删组 / 加人 / 移人（与网页同一份数据）") {
+                TextField("分组名，如 第一组", text: $name)
+                TextField("学号", text: $sid)
+                HStack {
+                    Button("创建") { Task { await store.groupEdit(name: name, sid: sid, op: "create") } }
+                    Button("删除") { Task { await store.groupEdit(name: name, sid: sid, op: "delete") } }
+                    Button("加人") { Task { await store.groupEdit(name: name, sid: sid, op: "add") } }
+                    Button("移人") { Task { await store.groupEdit(name: name, sid: sid, op: "remove") } }
+                }.buttonStyle(.bordered)
+                if let m = store.message { Text(m).font(.caption).foregroundStyle(.secondary) }
+            }
             let groups = store.data["groups"] as? [String: Any] ?? [:]
             let scores = store.data["scores"] as? [String: Any] ?? [:]
             if groups.isEmpty { Text("（还没有分组）") }
             ForEach(groups.keys.sorted(), id: \.self) { g in
                 let members = groups[g] as? [Any] ?? []
                 let rows = members.compactMap { m -> (String, Double)? in
-                    let sid = "\(m)"
-                    guard sid != "0" else { return nil }
+                    let s = "\(m)"
+                    guard s != "0" else { return nil }
                     var sc = 0.0
-                    if let arr = scores[sid] as? [Any], arr.count > 1 { sc = (arr[1] as? NSNumber)?.doubleValue ?? 0 }
-                    return (sid, sc)
+                    if let arr = scores[s] as? [Any], arr.count > 1 { sc = (arr[1] as? NSNumber)?.doubleValue ?? 0 }
+                    return (s, sc)
                 }
                 let avg = rows.isEmpty ? 0 : rows.reduce(0) { $0 + $1.1 } / Double(rows.count)
                 VStack(alignment: .leading, spacing: 2) {
@@ -677,6 +770,8 @@ struct ExamPage: View {
 
 struct ReportPage: View {
     @ObservedObject var store: MoreStore
+    @State private var delta = "2"
+    @State private var reason = ""
 
     var body: some View {
         List {
@@ -692,7 +787,20 @@ struct ReportPage: View {
                 let avg = rows.isEmpty ? 0 : rows.reduce(0) { $0 + $1.score } / Double(rows.count)
                 Text(String(format: "平均分 %.1f", avg)).font(.caption)
             }
-            Text("汇报的登记与批量加分是管理员权限，移动端先给只读视图。").font(.caption2)
+            Section("写操作（与网页一致）") {
+                HStack {
+                    TextField("加减值", text: $delta).frame(width: 70)
+                    TextField("原因", text: $reason)
+                }
+                HStack {
+                    Button("✅ 全部已汇报") { Task { await store.reportWrite(op: "all") } }
+                    Button("⬇ 批量应用到全班") {
+                        Task { await store.reportBatch(delta: Double(delta) ?? 0, reason: reason) }
+                    }
+                    Button("↺ 重置") { Task { await store.reportWrite(op: "reset") } }
+                }.buttonStyle(.bordered)
+                if let m = store.message { Text(m).font(.caption).foregroundStyle(.secondary) }
+            }
         }
         .navigationTitle("每日汇报")
     }
