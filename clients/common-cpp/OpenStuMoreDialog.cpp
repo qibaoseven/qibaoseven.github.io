@@ -248,6 +248,25 @@ void OpenStuMoreDialog::buildUi() {
     exv->addWidget(m_examMsg);
     m_tabs->addTab(examPage, QStringLiteral("考试"));
 
+    // ---------------- 惩罚管理 ----------------
+    auto* punPage = new QWidget(this);
+    auto* pv = new QVBoxLayout(punPage);
+    auto* pRow = new QHBoxLayout;
+    m_punStudent = new QComboBox(punPage);
+    for (const QString& sid3 : m_roster.keys())
+        m_punStudent->addItem(nameOf(sid3) + QStringLiteral(" (") + sid3 + QStringLiteral(")"), sid3);
+    auto* bPun = new QPushButton(QStringLiteral("🎯 抽取惩罚"), punPage);
+    auto* bDone = new QPushButton(QStringLiteral("✅ 完成当前惩罚"), punPage);
+    connect(bPun, &QPushButton::clicked, this, &OpenStuMoreDialog::drawPunishment);
+    connect(bDone, &QPushButton::clicked, this, &OpenStuMoreDialog::completePunishment);
+    pRow->addWidget(m_punStudent); pRow->addWidget(bPun); pRow->addWidget(bDone);
+    pv->addLayout(pRow);
+    m_punView = new QPlainTextEdit(punPage); m_punView->setReadOnly(true);
+    pv->addWidget(m_punView);
+    m_punMsg = new QLabel(punPage);
+    pv->addWidget(m_punMsg);
+    m_tabs->addTab(punPage, QStringLiteral("惩罚"));
+
     m_tabs->addTab(extraPage, QStringLiteral("其它"));
 
     // ---------- 自动事件 ----------
@@ -412,6 +431,7 @@ void OpenStuMoreDialog::onData(const QJsonObject& data) {
     refreshGroupsView();
     refreshReportView();
     refreshExamView();
+    refreshPunView();
     m_msg->setText(QStringLiteral("已加载：%1 人 · %2 条日志")
                        .arg(m_data.value("scores").toObject().size())
                        .arg(m_data.value("logs").toArray().size()));
@@ -969,4 +989,112 @@ void OpenStuMoreDialog::examAdd() {
     m_examMsg->setText(QStringLiteral("已上传：%1 %2 %3/%4").arg(nameOf(sid)).arg(subject)
                            .arg(m_examScore->value()).arg(m_examFull->value()));
     refreshExamView();
+}
+
+// ======================= 惩罚 =======================
+void OpenStuMoreDialog::refreshPunView() {
+    if (!m_punView) return;
+    const QJsonObject up = m_data.value("userPunishments").toObject();
+    QString s;
+    for (const QString& who : {QStringLiteral("active"), QStringLiteral("completed")}) {
+        const QJsonObject obj = up.value(who).toObject();
+        if (obj.isEmpty()) continue;
+        s += (who == QStringLiteral("active") ? QStringLiteral("⏳ 待完成\n") : QStringLiteral("✅ 已完成\n"));
+        for (auto it = obj.begin(); it != obj.end(); ++it) {
+            for (const QJsonValue& pv2 : it.value().toArray()) {
+                const QJsonObject p = pv2.toObject();
+                s += QStringLiteral("  %1：%2 [%3] 截止 %4\n")
+                         .arg(nameOf(it.key()), p.value("name").toString(),
+                              p.value("rarity").toString(),
+                              p.value("deadline").toString().left(16));
+            }
+        }
+    }
+    m_punView->setPlainText(s.isEmpty() ? QStringLiteral("（还没有惩罚记录）") : s);
+}
+
+void OpenStuMoreDialog::drawPunishment() {
+    const QString sid = m_punStudent->currentData().toString();
+    const QJsonObject pools = m_data.value("punishments").toObject().value("punishments").toObject();
+    QList<QPair<int, QJsonObject>> pool;
+    for (auto it = pools.begin(); it != pools.end(); ++it) {
+        for (const QJsonValue& v : it.value().toArray()) {
+            QJsonObject p = v.toObject();
+            int w = qMax(1, p.value("probability").toInt(1));
+            p["rarity"] = it.key();
+            for (int i = 0; i < w; ++i) pool.append({i, p});
+        }
+    }
+    if (pool.isEmpty()) { m_punMsg->setText(QStringLiteral("惩罚池是空的，先在网页端配置")); return; }
+    const QJsonObject picked = pool.at(QRandomGenerator::global()->bounded(pool.size())).second;
+    const QJsonObject up = m_data.value("userPunishments").toObject();
+    QJsonObject active = up.value("active").toObject();
+    QJsonArray arr = active.value(sid).toArray();
+    const QDateTime drawn = QDateTime::currentDateTime();
+    QDateTime deadline = drawn.addSecs(3600);
+    const QJsonArray t = picked.value("time").toArray();
+    if (!t.isEmpty() && t.at(0).toString().endsWith(QLatin1Char('d'))) {
+        deadline = drawn.addDays(t.at(0).toString().chopped(1).toInt());
+    }
+    arr.append(QJsonObject{
+        {"id", QString::number(drawn.toMSecsSinceEpoch())},
+        {"name", picked.value("name").toString()},
+        {"description", picked.value("description").toString()},
+        {"rarity", picked.value("rarity").toString()},
+        {"time_limit", t.at(0).toString()},
+        {"task_duration", t.size() > 1 ? t.at(1).toString() : QString()},
+        {"success_gold", picked.value("score").toArray().at(0).toDouble() * 10},
+        {"fail_gold", picked.value("score").toArray().at(1).toDouble() * 10},
+        {"deadline", deadline.toString(Qt::ISODate)},
+        {"draw_time", drawn.toString(Qt::ISODate)},
+        {"status", QStringLiteral("active")}
+    });
+    active[sid] = arr;
+    QJsonObject nu;
+    nu["active"] = active;
+    nu["completed"] = up.value("completed").toObject();
+    m_data["userPunishments"] = nu;
+    m_api->saveClassData(m_data);
+    m_punMsg->setText(QStringLiteral("抽到：%1（%2）").arg(picked.value("name").toString(),
+                                                        picked.value("rarity").toString()));
+    refreshPunView();
+}
+
+void OpenStuMoreDialog::completePunishment() {
+    const QString sid = m_punStudent->currentData().toString();
+    QJsonObject up = m_data.value("userPunishments").toObject();
+    QJsonObject active = up.value("active").toObject();
+    QJsonArray arr = active.value(sid).toArray();
+    if (arr.isEmpty()) { m_punMsg->setText(QStringLiteral("这个学生没有待完成的惩罚")); return; }
+    QJsonObject first = arr.at(0).toObject();
+    arr.removeFirst();
+    active[sid] = arr;
+    QJsonObject completed = up.value("completed").toObject();
+    QJsonArray done = completed.value(sid).toArray();
+    first["status"] = QStringLiteral("completed");
+    done.append(first);
+    completed[sid] = done;
+    QJsonObject nu2;
+    nu2["active"] = active;
+    nu2["completed"] = completed;
+    m_data["userPunishments"] = nu2;
+    const double reward = first.value("success_gold").toDouble();
+    QJsonObject golds = m_data.value("gold").toObject();
+    QJsonObject entry = golds.value(sid).toObject();
+    entry["amount"] = entry.value("amount").toDouble() + reward;
+    golds[sid] = entry;
+    m_data["gold"] = golds;
+    QJsonArray logs = m_data.value("logs").toArray();
+    logs.insert(0, QJsonObject{
+        {"timestamp", QDateTime::currentDateTime().toString(QStringLiteral("yyyy/MM/dd HH:mm:ss"))},
+        {"action", QStringLiteral("完成惩罚")}, {"student_id", sid}, {"student_name", nameOf(sid)},
+        {"score_change", 0}, {"current_score", entry.value("amount").toDouble()},
+        {"reason", QStringLiteral("完成惩罚：") + first.value("name").toString()},
+        {"page", QStringLiteral("qt")}, {"user_role", QStringLiteral("teacher")}
+    });
+    while (logs.size() > 2000) logs.removeLast();
+    m_data["logs"] = logs;
+    m_api->saveClassData(m_data);
+    m_punMsg->setText(QStringLiteral("已完成「%1」，金币 +%2").arg(first.value("name").toString()).arg(reward));
+    refreshPunView();
 }

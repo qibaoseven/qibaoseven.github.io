@@ -43,6 +43,8 @@ private slots:
     void reportReset();
     void reportBatchApply();
     void examAdd();
+    void drawPunishment();
+    void completePunishment();
 
 private:
     void buildUi();
@@ -50,6 +52,7 @@ private:
     void refreshGroupsView();
     void refreshReportView();
     void refreshExamView();
+    void refreshPunView();
     QString sidOf(int row) const;
     QString nameOf(const QString& sid) const;
 
@@ -82,6 +85,10 @@ private:
     QDoubleSpinBox* m_examFull = nullptr;
     QPlainTextEdit* m_examView = nullptr;
     QLabel* m_examMsg = nullptr;
+    // 惩罚
+    QComboBox* m_punStudent = nullptr;
+    QPlainTextEdit* m_punView = nullptr;
+    QLabel* m_punMsg = nullptr;
     // 日志
     QPlainTextEdit* m_logs = nullptr;
     // 初始化
