@@ -29,7 +29,7 @@
 
 图例：✅ 已有且可用 ｜ 🟡 可编译但未验证 ｜ ⛔ 端上物理不支持 ｜ ⬜ 尚未实现（下一阶段）
 
-| 功能 | 网页 | CLI | Windows/KDE (Qt6) | Android | Swift(iOS/macOS/tvOS/watchOS/visionOS) | 鸿蒙 |
+| 功能 | 网页 | CLI (C++/Python) | Windows/KDE (Qt6) | Android | Swift(iOS/macOS/tvOS/watchOS/visionOS) | 鸿蒙 |
 |---|---|---|---|---|---|---|
 | 连接班级/鉴权 | ✅ | ✅ | ✅ | 🟡 | 🟡 | 🟡 |
 | 今日应交 + 进度 | ✅ | ✅ | ✅ | 🟡 | 🟡 | 🟡 |

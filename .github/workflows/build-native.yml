@@ -34,6 +34,26 @@ jobs:
           name: openstu-cli-linux-x86_64
           path: openstu-cli-linux-x86_64.tar.gz
 
+  python-cli:
+    name: Python CLI (Windows/macOS/Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 语法检查
+        run: python3 -m py_compile clients/python-cli/openstu.py
+      - name: 打包
+        run: |
+          mkdir -p dist
+          cp clients/python-cli/openstu.py clients/python-cli/README.md dist/
+          cd dist && zip -q openstu-python-cli.zip openstu.py README.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openstu-python-cli
+          path: dist/openstu-python-cli.zip
+
   qt:
     name: Qt (Linux / KDE)
     runs-on: ubuntu-latest
@@ -139,7 +159,7 @@ jobs:
 
   release:
     name: 发布到 native-latest
-    needs: [cli, qt, android, swift-macos]
+    needs: [cli, python-cli, qt, android, swift-macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -156,7 +176,7 @@ jobs:
           tag_name: native-latest
           name: "OpenStu 原生客户端（最新构建）"
           body: |
-            自动构建产物：CLI（Linux x86_64）、Qt（Linux x86_64）、Android Debug APK、macOS .app。
+            自动构建产物：CLI（Linux x86_64）、Python CLI（Windows/macOS/Linux，纯标准库）、Qt（Linux x86_64）、Android Debug APK、macOS .app。
             iOS 版在 CI 里只做编译验证，不产出可安装包（需要你自己的证书）。
           files: out/*
           make_latest: false
