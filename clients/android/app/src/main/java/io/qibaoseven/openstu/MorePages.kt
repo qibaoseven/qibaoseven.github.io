@@ -77,6 +77,33 @@ class MoreViewModel : ViewModel() {
     }
 
 
+
+    fun addExam(store: Store, sid: String, subject: String, score: Double, full: Double) {
+        val d = data ?: return
+        if (subject.isBlank()) { message = "先填科目"; return }
+        if (sid.isBlank()) { message = "先填学号"; return }
+        store.applyToApi()
+        viewModelScope.launch {
+            busy = true
+            message = withContext(Dispatchers.IO) {
+                try {
+                    val data = JSONObject(d.toString())
+                    val ex = data.optJSONObject("examScores") ?: JSONObject().also { data.put("examScores", it) }
+                    val arr = ex.optJSONArray(sid) ?: JSONArray().also { ex.put(sid, it) }
+                    arr.put(JSONObject().apply {
+                        put("id", (System.currentTimeMillis()).toString())
+                        put("date", SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
+                        put("name", sid); put("score", score); put("full", full); put("subject", subject)
+                    })
+                    val r = Api.saveClassData(data)
+                    if (r is Result.Err) "保存失败：${r.message}" else "✓ 已上传 $subject $score/$full"
+                } catch (e: Exception) { "操作失败：${e.message}" }
+            }
+            busy = false
+            load(store)
+        }
+    }
+
     fun groupEdit(store: Store, name: String, sid: String, op: String) {
         val d = data ?: return
         if (name.isBlank()) { message = "先填分组名"; return }
@@ -541,7 +568,7 @@ fun MoreScreen(store: Store, vm: MoreViewModel, roster: List<Student>, onBack: (
                 "groups" -> GroupsPanel(store, vm)
                 "init" -> InitPanel(store, vm)
                 "positions" -> PositionsPanel(store, vm)
-                "exam" -> ExamPanel(vm)
+                "exam" -> ExamPanel(store, vm)
                 "report" -> ReportPanel(store, vm)
                 "backup" -> BackupPanel(vm)
                 "account" -> AccountPanel(store)
@@ -830,9 +857,25 @@ private fun PositionsPanel(store: Store, vm: MoreViewModel) {
 }
 
 @Composable
-private fun ExamPanel(vm: MoreViewModel) {
+private fun ExamPanel(store: Store, vm: MoreViewModel) {
     val exams = vm.data?.optJSONObject("examScores")
+    var sid by remember { mutableStateOf("") }
+    var subject by remember { mutableStateOf("") }
+    var score by remember { mutableStateOf("85") }
+    var full by remember { mutableStateOf("100") }
     Column(Modifier.verticalScroll(rememberScrollState())) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(sid, { sid = it }, label = { Text("学号") }, singleLine = true, modifier = Modifier.weight(1f))
+            OutlinedTextField(subject, { subject = it }, label = { Text("科目") }, singleLine = true, modifier = Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(score, { score = it }, label = { Text("得分") }, singleLine = true, modifier = Modifier.weight(1f))
+            OutlinedTextField(full, { full = it }, label = { Text("满分") }, singleLine = true, modifier = Modifier.weight(1f))
+        }
+        Button(onClick = {
+            vm.addExam(store, sid.trim(), subject.trim(), score.toDoubleOrNull() ?: 0.0, full.toDoubleOrNull() ?: 100.0)
+        }) { Text("➕ 上传这一个分数") }
+        vm.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         if (exams == null || exams.length() == 0) { Text("（还没有考试记录）"); return@Column }
         val scores = vm.data?.optJSONObject("scores")
         val keys = exams.keys()
