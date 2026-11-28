@@ -1,6 +1,10 @@
-file.py
-input.txt
-node_modules/
-netlify/functions/*.zip
-.DS_Store
-*.log
+# 构建产物
+clients/*/build/
+clients/linux-cli/openstu-cli
+clients/linux-cli/openstu-cli-static
+clients/android/.gradle/
+clients/android/local.properties
+clients/android/app/build/
+clients/ios/OpenStu.xcodeproj/
+clients/ios/*.xcworkspace/
+*.o

@@ -1,0 +1,31 @@
+# xcodegen 配置：在 clients/ios 目录跑 `xcodegen generate` 就会生成 OpenStu.xcodeproj
+name: OpenStu
+options:
+  bundleIdPrefix: io.qibaoseven
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "0.46"
+    CURRENT_PROJECT_VERSION: "46"
+targets:
+  OpenStu:
+    type: application
+    platform: iOS
+    sources:
+      - path: OpenStu
+    info:
+      path: OpenStu/Info.plist
+      properties:
+        CFBundleDisplayName: OpenStu 交作业
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.qibaoseven.openstu
+        TARGETED_DEVICE_FAMILY: "1,2"

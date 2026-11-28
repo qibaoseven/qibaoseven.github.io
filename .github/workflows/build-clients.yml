@@ -1,0 +1,48 @@
+name: build-clients
+
+# native-clients 分支上改到 clients/** 就编译三个 C++ 客户端（Android/iOS 需要 SDK，不在 CI 里做）
+on:
+  push:
+    branches: [native-clients]
+    paths:
+      - 'clients/**'
+      - '.github/workflows/build-clients.yml'
+  workflow_dispatch:
+
+jobs:
+  cpp-clients:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libcurl4-openssl-dev qt6-base-dev
+
+      - name: CLI
+        run: |
+          cd clients/linux-cli
+          make
+          ./openstu-cli --help > /dev/null
+
+      - name: Qt 桌面端（Windows 交叉配置也能编，这里只验证编译）
+        run: |
+          cd clients/qt-windows
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j$(nproc)
+
+      - name: Qt / KDE 版
+        run: |
+          cd clients/linux-kde
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j$(nproc)
+
+      - name: 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: openstu-clients-linux
+          path: |
+            clients/linux-cli/openstu-cli
+            clients/qt-windows/build/openstu-desktop
+            clients/linux-kde/build/openstu-kde
