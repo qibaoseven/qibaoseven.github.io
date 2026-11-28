@@ -107,6 +107,10 @@ void OpenStuMoreDialog::buildUi() {
     // ---------- 日志 ----------
     auto* logPage = new QWidget(this);
     auto* lv = new QVBoxLayout(logPage);
+    m_logFilter = new QLineEdit(logPage);
+    m_logFilter->setPlaceholderText(QStringLiteral("筛选：学生名 / 操作 / 原因，留空显示全部"));
+    connect(m_logFilter, &QLineEdit::textChanged, this, [this] { fillTable(); });
+    lv->addWidget(m_logFilter);
     m_logs = new QPlainTextEdit(logPage);
     m_logs->setReadOnly(true);
     lv->addWidget(m_logs);
@@ -388,14 +392,20 @@ void OpenStuMoreDialog::fillTable() {
     // 日志
     const QJsonArray logs = m_data.value("logs").toArray();
     QStringList lines;
-    for (int i = 0; i < qMin(logs.size(), 60); ++i) {
+    const QString filter = m_logFilter ? m_logFilter->text().trimmed() : QString();
+    for (int i = 0; i < logs.size() && lines.size() < 60; ++i) {
         const QJsonObject l = logs.at(i).toObject();
-        lines << QStringLiteral("%1 · %2 · %3 %4%5 · %6")
+        const QString line = QStringLiteral("%1 · %2 · %3 %4%5 · %6")
                  .arg(l.value("timestamp").toString(), l.value("action").toString(),
                       l.value("student_name").toString())
                  .arg(l.value("score_change").toDouble() >= 0 ? "+" : "")
                  .arg(l.value("score_change").toDouble())
                  .arg(l.value("reason").toString());
+        if (filter.isEmpty()
+            || line.contains(filter, Qt::CaseInsensitive)
+            || l.value("student_id").toString().contains(filter)
+            || l.value("student_name").toString().contains(filter))
+            lines << line;
     }
     m_logs->setPlainText(lines.isEmpty() ? QStringLiteral("（暂无日志）") : lines.join('\n'));
 

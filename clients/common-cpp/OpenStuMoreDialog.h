@@ -104,6 +104,7 @@ private:
     QLabel* m_exMsg = nullptr;
     // 日志
     QPlainTextEdit* m_logs = nullptr;
+    QLineEdit* m_logFilter = nullptr;
     // 初始化
     QSpinBox* m_count = nullptr;
     QLineEdit* m_subjects = nullptr;
