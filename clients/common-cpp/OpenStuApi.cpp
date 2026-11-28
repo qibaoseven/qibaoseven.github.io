@@ -73,6 +73,84 @@ void OpenStuApi::post(const QString& path, const QJsonObject& body, bool auth, c
     });
 }
 
+void OpenStuApi::fetchClassData() {
+    QNetworkReply* reply = m_net->get(makeRequest("/api/class/" + m_classId, true));
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) { emit failed(describeError(reply)); return; }
+        const QJsonObject o = QJsonDocument::fromJson(reply->readAll()).object();
+        emit classDataReady(o.value("data").toObject());
+    });
+}
+
+void OpenStuApi::saveClassData(const QJsonObject& data) {
+    const QJsonObject body{ {"data", data} };
+    QNetworkReply* reply = m_net->post(makeRequest("/api/class/" + m_classId, true),
+                                       QJsonDocument(body).toJson(QJsonDocument::Compact));
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            emit classDataSaved(false, describeError(reply));
+            return;
+        }
+        emit classDataSaved(true, QStringLiteral("已保存"));
+    });
+}
+
+void OpenStuApi::fetchMeta() {
+    QNetworkReply* reply = m_net->get(makeRequest("/api/class/" + m_classId + "/homework/meta", true));
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) { emit failed(describeError(reply)); return; }
+        emit metaReady(QJsonDocument::fromJson(reply->readAll()).object());
+    });
+}
+
+void OpenStuApi::initHomework(int studentCount, const QStringList& subjects) {
+    QJsonObject names;
+    for (int i = 0; i < subjects.size(); ++i) names[QString::number(i)] = subjects.at(i);
+    const QJsonObject body{
+        {"student_count", studentCount},
+        {"subject_count", subjects.size()},
+        {"subject_names", names}
+    };
+    QNetworkReply* reply = m_net->post(makeRequest("/api/class/" + m_classId + "/homework/init", true),
+                                       QJsonDocument(body).toJson(QJsonDocument::Compact));
+    connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            emit classDataSaved(false, describeError(reply));
+            return;
+        }
+        emit classDataSaved(true, QStringLiteral("初始化完成"));
+    });
+}
+
+void OpenStuApi::fetchJournal(int studentId) {
+    QNetworkReply* reply = m_net->get(makeRequest(
+        "/api/class/" + m_classId + "/journal/" + QString::number(studentId), true));
+    connect(reply, &QNetworkReply::finished, this, [this, reply, studentId]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) { emit failed(describeError(reply)); return; }
+        const QJsonObject o = QJsonDocument::fromJson(reply->readAll()).object();
+        emit journalReady(studentId, o.value("journal").toString());
+    });
+}
+
+void OpenStuApi::addJournal(int studentId, const QString& text) {
+    const QJsonObject body{
+        {"student_id", QString::number(studentId)},
+        {"content", text}
+    };
+    QNetworkReply* reply = m_net->post(makeRequest("/api/class/" + m_classId + "/journal", true),
+                                       QJsonDocument(body).toJson(QJsonDocument::Compact));
+    connect(reply, &QNetworkReply::finished, this, [this, reply, studentId]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) { emit failed(describeError(reply)); return; }
+        emit classDataSaved(true, QStringLiteral("历程已追加"));
+    });
+}
+
 void OpenStuApi::fetchClasses() {
     get("/api/classes", false, "classes");
 }

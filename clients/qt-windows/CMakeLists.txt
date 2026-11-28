@@ -15,6 +15,8 @@ add_executable(openstu-desktop WIN32
     ${COMMON}/OpenStuApi.h
     ${COMMON}/OpenStuWindow.cpp
     ${COMMON}/OpenStuWindow.h
+    ${COMMON}/OpenStuMoreDialog.cpp
+    ${COMMON}/OpenStuMoreDialog.h
 )
 
 target_include_directories(openstu-desktop PRIVATE ${COMMON})

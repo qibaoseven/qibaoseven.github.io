@@ -8,6 +8,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QCryptographicHash>
+#include <QStringList>
 
 class OpenStuApi : public QObject {
     Q_OBJECT
@@ -25,12 +26,24 @@ public:
     void fetchAllHomework();
     void submit(int studentId, int subjectId, int typeId, const QString& date = QString()); // typeId < 0 表示不分种类
 
+    // ---- 班级数据（分数/金币/日志/分组）与初始化 ----
+    void fetchClassData();
+    void saveClassData(const QJsonObject& data);
+    void fetchMeta();
+    void initHomework(int studentCount, const QStringList& subjects);
+    void fetchJournal(int studentId);
+    void addJournal(int studentId, const QString& text);
+
 signals:
     void classesReady(const QJsonArray& classes);
     void requiredReady(const QJsonObject& required);
     void rosterReady(const QJsonObject& roster);
     void homeworkReady(const QJsonObject& homework);
     void submitDone(const QJsonObject& result);
+    void classDataReady(const QJsonObject& data);
+    void classDataSaved(bool ok, const QString& message);
+    void metaReady(const QJsonObject& meta);
+    void journalReady(int studentId, const QString& text);
     void failed(const QString& message);
 
 private:

@@ -16,6 +16,8 @@ add_executable(openstu-kde
     ${COMMON}/OpenStuApi.h
     ${COMMON}/OpenStuWindow.cpp
     ${COMMON}/OpenStuWindow.h
+    ${COMMON}/OpenStuMoreDialog.cpp
+    ${COMMON}/OpenStuMoreDialog.h
 )
 target_include_directories(openstu-kde PRIVATE ${COMMON})
 target_link_libraries(openstu-kde PRIVATE Qt6::Widgets Qt6::Network)

@@ -1,5 +1,6 @@
 #include "OpenStuWindow.h"
 #include "OpenStuApi.h"
+#include "OpenStuMoreDialog.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -61,6 +62,8 @@ void OpenStuWindow::buildUi() {
     for (int i = 0; i >= -6; --i) m_date->addItem(QDate::currentDate().addDays(i).toString("yyyy-MM-dd"));
     m_save    = new QPushButton("保存");
     m_connect = new QPushButton("连接并刷新");
+    m_more = new QPushButton("更多功能");
+    row->addWidget(m_more);
     m_refresh = new QPushButton("刷新");
     row->addWidget(new QLabel("日期"));
     row->addWidget(m_date);
@@ -98,6 +101,7 @@ void OpenStuWindow::buildUi() {
     connect(m_save,    &QPushButton::clicked, this, &OpenStuWindow::onSaveSettings);
     connect(m_connect, &QPushButton::clicked, this, &OpenStuWindow::onConnect);
     connect(m_refresh, &QPushButton::clicked, this, &OpenStuWindow::refresh);
+    connect(m_more, &QPushButton::clicked, this, &OpenStuWindow::onMore);
     connect(m_table,   &QTableWidget::cellClicked, this, &OpenStuWindow::onCellClicked);
 }
 
@@ -256,4 +260,15 @@ void OpenStuWindow::onSubmitDone(const QJsonObject& result) {
 void OpenStuWindow::onFailed(const QString& msg) {
     log("请求失败: " + msg);
     m_status->setText("错误: " + msg);
+}
+
+void OpenStuWindow::onMore() {
+    if (!m_api->hasConfig()) {
+        QMessageBox::information(this, QStringLiteral("还没配置"),
+                                 QStringLiteral("先在下面填好服务器 / 班级 / 密码并保存，再打开更多功能。"));
+        return;
+    }
+    OpenStuMoreDialog dlg(m_api, m_roster, this);
+    dlg.exec();
+    refresh();
 }

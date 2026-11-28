@@ -13,6 +13,7 @@ class QLabel;
 class QPlainTextEdit;
 class QComboBox;
 
+
 class OpenStuWindow : public QWidget {
     Q_OBJECT
 public:
@@ -31,6 +32,7 @@ private slots:
     void onSubmitDone(const QJsonObject& result);
     void onFailed(const QString& msg);
     void onCellClicked(int row, int column);
+    void onMore();
 
 private:
     void buildUi();
@@ -46,6 +48,7 @@ private:
     QPushButton* m_save = nullptr;
     QPushButton* m_connect = nullptr;
     QPushButton* m_refresh = nullptr;
+    QPushButton* m_more = nullptr;
     QTableWidget* m_table = nullptr;
     QProgressBar* m_progress = nullptr;
     QLabel* m_status = nullptr;

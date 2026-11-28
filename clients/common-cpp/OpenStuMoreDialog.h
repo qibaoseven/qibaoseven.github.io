@@ -1,0 +1,61 @@
+// 网页端「控制台 / 分数 / 金币 / 抽奖 / 日志 / 初始化 / 历程」的桌面版
+#pragma once
+#include <QDialog>
+#include <QJsonObject>
+
+class OpenStuApi;
+class QTabWidget;
+class QTableWidget;
+class QComboBox;
+class QDoubleSpinBox;
+class QLineEdit;
+class QLabel;
+class QPlainTextEdit;
+class QSpinBox;
+
+class OpenStuMoreDialog : public QDialog {
+    Q_OBJECT
+public:
+    OpenStuMoreDialog(OpenStuApi* api, const QJsonObject& roster, QWidget* parent = nullptr);
+
+private slots:
+    void onData(const QJsonObject& data);
+    void onSaved(bool ok, const QString& message);
+    void onMeta(const QJsonObject& meta);
+    void onJournal(int studentId, const QString& text);
+    void onScoresClicked(int row, int column);
+    void applyDelta(bool asGold);
+    void draw(int times);
+    void runInit();
+    void readJournal();
+    void appendJournal();
+
+private:
+    void buildUi();
+    void fillTable();
+    QString sidOf(int row) const;
+    QString nameOf(const QString& sid) const;
+
+    OpenStuApi* m_api = nullptr;
+    QJsonObject m_roster;
+    QJsonObject m_data;
+
+    QTabWidget* m_tabs = nullptr;
+    // 分数 / 金币
+    QTableWidget* m_table = nullptr;
+    QComboBox* m_student = nullptr;
+    QDoubleSpinBox* m_delta = nullptr;
+    QLineEdit* m_reason = nullptr;
+    QComboBox* m_studentsForGacha = nullptr;
+    QLabel* m_msg = nullptr;
+    // 日志
+    QPlainTextEdit* m_logs = nullptr;
+    // 初始化
+    QSpinBox* m_count = nullptr;
+    QLineEdit* m_subjects = nullptr;
+    QPlainTextEdit* m_metaText = nullptr;
+    // 历程
+    QComboBox* m_journalStudent = nullptr;
+    QPlainTextEdit* m_journalText = nullptr;
+    QLineEdit* m_journalInput = nullptr;
+};
