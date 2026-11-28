@@ -184,6 +184,25 @@ object Api {
             }
         }
 
+    /** 绑卡：POST /uuids/add，可顺带登记学号/学科/种类 */
+    fun addUid(uid: String, studentId: Int, subjectId: Int? = null,
+               typeId: Int? = null, date: String? = null): Result<JSONObject> {
+        val body = JSONObject().apply {
+            put("uid", uid)
+            put("student_id", studentId)
+            if (subjectId != null) put("subject_id", subjectId)
+            if (typeId != null) put("type_id", typeId)
+            if (date != null) put("target_date", date)
+        }
+        return when (val r = open("/api/class/$classId/uuids/add", "POST", body.toString())) {
+            is Result.Err -> r
+            is Result.Ok -> {
+                val (code, text) = r.value
+                if (code !in 200..299) Result.Err(errorText(code, text), code) else Result.Ok(JSONObject(text))
+            }
+        }
+    }
+
     fun submit(studentId: Int, subjectId: Int, date: String, typeId: Int? = null): Result<JSONObject> {
         val body = JSONObject().apply {
             put("student_id", studentId)

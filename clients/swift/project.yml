@@ -1,0 +1,64 @@
+# xcodegen：在 clients/swift 目录跑 `xcodegen generate`
+# 按需求只做 macOS / tvOS / watchOS / visionOS 四个端，iOS 端明确不做。
+name: OpenStu
+options:
+  bundleIdPrefix: io.qibaoseven
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "0.46"
+    CURRENT_PROJECT_VERSION: "46"
+
+targets:
+  OpenStuMac:
+    type: application
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - path: Shared
+      - path: macOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.qibaoseven.openstu.mac
+        PRODUCT_NAME: OpenStu
+        INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 qibaoseven"
+
+  OpenStuTV:
+    type: application
+    platform: tvOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Shared
+      - path: tvOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.qibaoseven.openstu.tv
+        PRODUCT_NAME: OpenStu
+        GENERATE_INFOPLIST_FILE: YES
+
+  OpenStuWatch:
+    type: application
+    platform: watchOS
+    deploymentTarget: "10.0"
+    sources:
+      - path: Shared
+      - path: watchOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.qibaoseven.openstu.watch
+        PRODUCT_NAME: OpenStu
+        GENERATE_INFOPLIST_FILE: YES
+
+  OpenStuVision:
+    type: application
+    platform: visionOS
+    deploymentTarget: "1.0"
+    sources:
+      - path: Shared
+      - path: visionOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.qibaoseven.openstu.vision
+        PRODUCT_NAME: OpenStu
+        GENERATE_INFOPLIST_FILE: YES

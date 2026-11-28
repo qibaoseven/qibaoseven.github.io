@@ -15,12 +15,22 @@ class MainActivity : ComponentActivity() {
             val store = remember { Store(this) }
             var page by remember { mutableStateOf(if (store.configured) 1 else 0) }
             val vm: MainViewModel = viewModel()
+            val deviceVm: DeviceViewModel = viewModel()
 
             MaterialTheme {
                 Surface {
                     when (page) {
                         0 -> ConfigScreen(store) { page = 1 }
-                        else -> MainScreen(store, vm) { page = 0 }
+                        2 -> DevicePage(
+                            store = store,
+                            vm = deviceVm,
+                            roster = vm.state.roster,
+                            subjects = vm.state.required?.subjects ?: emptyList(),
+                            subjectName = { vm.subjectName(it) },
+                            date = vm.state.required?.date ?: java.time.LocalDate.now().toString(),
+                            onBack = { page = 1 },
+                        )
+                        else -> MainScreen(store, vm, onConfig = { page = 0 }, onDevice = { page = 2 })
                     }
                 }
             }

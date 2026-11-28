@@ -5,8 +5,8 @@
 
 | 目录 | 平台 | 技术栈 | 验证状态 |
 |---|---|---|---|
-| `android/` | Android 7.0+ | Kotlin 1.9 + Jetpack Compose + HttpURLConnection | 未编译（本机无 Android SDK），代码按 AGP 8.5 组织 |
-| `ios/` | iOS 16+ | Swift 5.9 + SwiftUI + URLSession + CryptoKit | 未编译（本机无 Xcode），用 `xcodegen` 生成工程 |
+| `android/` | Android 7.0+ | Kotlin 1.9 + Jetpack Compose + HttpURLConnection | 未编译（本机无 Android SDK）；设备管理页 + Termux 刷写脚本 |
+| `swift/` | macOS 13+ / tvOS 17+ / watchOS 10+ / visionOS 1+ | Swift 5.9 + SwiftUI + URLSession + CryptoKit | 未编译（本机无 Xcode），`xcodegen` 生成四端工程；**iOS 端按需求不做** |
 | `qt-windows/` | Windows 10+ | Qt 6 Widgets + QNetworkAccessManager | **已用 Qt 6.2 编译通过并在 offscreen 模式启动验证** |
 | `linux-kde/` | Linux 桌面 | Qt 6 Widgets，可选 KDE Frameworks 6（KXmlGui 外壳） | **已用 Qt 6.2 编译通过**（本机无 KF6，走纯 Qt 降级分支；KDE 分支未编译验证） |
 | `linux-cli/` | 任意 Linux | C++17 + libcurl，零第三方依赖 | **已编译通过并对线上 API 实测**（`openstu-cli classes` 拉到真实班级列表） |
@@ -70,15 +70,19 @@ cd clients/harmony && hvigorw assembleHap --mode module -p product=default
 选型说明：鸿蒙上真正成熟的是官方 **ArkTS + ArkUI**（第一方语言，Stage 模型、权限、打包链路全官方）；
 Flutter/React Native 的鸿蒙支持都是社区移植、生态滞后，KMP 的鸿蒙插件还在早期，所以没选。
 
-### iOS
+### Swift 四端（macOS / tvOS / watchOS / visionOS）
 
 ```bash
-cd clients/ios
-xcodegen generate           # 需要 brew install xcodegen
-open OpenStu.xcodeproj      # 选自己的 Team 后即可真机/模拟器运行
+cd clients/swift
+xcodegen generate           # 生成含四个 target 的 OpenStu.xcodeproj
+open OpenStu.xcodeproj
 ```
 
-`project.yml` 里已配好 bundle id `io.qibaoseven.openstu`、iOS 16 部署目标；证书和 Team 需要在 Xcode 里选一次。
+- `macOS`：分栏窗口（左班级信息+进度，右学生列表），⌘R 刷新
+- `tvOS`：卡片网格 + 遥控器焦点，点卡片选科目
+- `watchOS`：单列紧凑列表，详情页逐科勾选
+- `visionOS`：玻璃材质卡片 + `hoverEffect(.lift)`，窗口内自适应网格
+- **iOS 端不做**（按需求）
 
 ## 安全与隐私说明
 
