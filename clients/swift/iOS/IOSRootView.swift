@@ -7,6 +7,7 @@ struct IOSRootView: View {
     @State private var target: (id: Int, name: String)?
     @State private var showSettings = false
     @State private var showDevice = false
+    @State private var showMore = false
 
     var body: some View {
         NavigationStack {
@@ -18,6 +19,7 @@ struct IOSRootView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button("刷新") { Task { await model.refresh() } }
+                        Button("更多功能") { showMore = true }
                         Button("设备管理") { showDevice = true }
                         Button("设置") { showSettings = true }
                     } label: { Image(systemName: "ellipsis.circle") }
@@ -25,6 +27,7 @@ struct IOSRootView: View {
             }
             .sheet(isPresented: $showSettings) { SettingsView(model: model) }
             .sheet(isPresented: $showDevice) { DeviceView(model: model) }
+            .sheet(isPresented: $showMore) { MoreView(model: model) }
             .confirmationDialog(target.map { "\($0.id) \($0.name) · 登记" } ?? "",
                                 isPresented: Binding(get: { target != nil }, set: { if !$0 { target = nil } }),
                                 titleVisibility: .visible) {

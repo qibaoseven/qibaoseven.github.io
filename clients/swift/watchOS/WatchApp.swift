@@ -7,6 +7,7 @@ struct OpenStuWatchApp: App {
 
 struct WatchRootView: View {
     @StateObject private var model = AppModel()
+    @State private var showMore = false
     @State private var push: (id: Int, name: String)?
 
     var body: some View {
@@ -46,11 +47,15 @@ struct WatchRootView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     NavigationLink { DeviceView(model: model) } label: { Image(systemName: "cable.connector") }
                 }
+                ToolbarItem(placement: .bottomBar) {
+                    Button { showMore = true } label: { Image(systemName: "square.grid.2x2") }
+                }
             }
             .navigationDestination(item: $push) { st in
                 SubjectList(model: model, student: st)
             }
             .task { if model.configured { await model.refresh() } }
+            .sheet(isPresented: $showMore) { MoreView(model: model) }
         }
     }
 }

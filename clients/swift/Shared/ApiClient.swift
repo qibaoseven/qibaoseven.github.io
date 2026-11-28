@@ -91,6 +91,44 @@ actor ApiClient {
         return try JSONDecoder().decode(SubmitResult.self, from: try await call("/api/class/\(classId)/homework/update", method: "POST", body: body))
     }
 
+    // ---------- 班级数据 / 初始化 / 历程 ----------
+    func classData() async throws -> [String: Any] {
+        let data = try await call("/api/class/\(classId)")
+        let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        return obj?["data"] as? [String: Any] ?? [:]
+    }
+
+    func saveClassData(_ data: [String: Any]) async throws {
+        _ = try await call("/api/class/\(classId)", method: "POST", body: ["data": data])
+    }
+
+    func meta() async throws -> [String: Any] {
+        let data = try await call("/api/class/\(classId)/homework/meta")
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+    }
+
+    func initHomework(students: Int, subjects: [String]) async throws {
+        var names: [String: String] = [:]
+        for (i, s) in subjects.enumerated() { names[String(i)] = s }
+        _ = try await call("/api/class/\(classId)/homework/init", method: "POST",
+                           body: ["student_count": students, "subject_count": subjects.count, "subject_names": names])
+    }
+
+    func journal(studentId: Int) async throws -> String {
+        let data = try await call("/api/class/\(classId)/journal/\(studentId)")
+        let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        return obj?["journal"] as? String ?? ""
+    }
+
+    func journalAdd(studentId: Int, text: String, operatorName: String?) async throws {
+        var body: [String: Any] = ["student_id": String(studentId), "content": text]
+        if let operatorName, !operatorName.isEmpty {
+            body["operator_name"] = operatorName
+            body["operator_role"] = "admin"
+        }
+        _ = try await call("/api/class/\(classId)/journal", method: "POST", body: body)
+    }
+
     static func today() -> String {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: Date())
     }

@@ -6,6 +6,7 @@ struct MacRootView: View {
     @State private var target: (id: Int, name: String)?
     @State private var showSettings = false
     @State private var showDevice = false
+    @State private var showMore = false
 
     var body: some View {
         Group {
@@ -24,12 +25,14 @@ struct MacRootView: View {
             ToolbarItemGroup {
                 Button { Task { await model.refresh() } } label: { Label("刷新", systemImage: "arrow.clockwise") }
                     .keyboardShortcut("r")
+                Button { showMore = true } label: { Label("更多功能", systemImage: "square.grid.2x2") }
                 Button { showDevice = true } label: { Label("设备管理", systemImage: "cable.connector") }
                 Button { showSettings = true } label: { Label("设置", systemImage: "gearshape") }
             }
         }
         .sheet(isPresented: $showSettings) { SettingsPane(model: model, embedded: true).frame(width: 460, height: 420) }
         .sheet(isPresented: $showDevice) { DeviceView(model: model).frame(minWidth: 560, minHeight: 620) }
+        .sheet(isPresented: $showMore) { MoreView(model: model).frame(minWidth: 720, minHeight: 720) }
         .confirmationDialog(target.map { "\($0.id) \($0.name) · 登记" } ?? "",
                             isPresented: Binding(get: { target != nil }, set: { if !$0 { target = nil } }),
                             titleVisibility: .visible) {
