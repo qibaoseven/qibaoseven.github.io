@@ -153,7 +153,7 @@ export class Api {
     return `${d.getFullYear()}-${mm}-${dd}`;
   }
 
-  private static async request(path: string, method: http.RequestMethod,
+  static async request(path: string, method: http.RequestMethod,
                                 body: string = '', auth: boolean = true): Promise<ApiResult> {
     const result = new ApiResult();
     const client = http.createHttp();
@@ -240,5 +240,289 @@ export class Api {
       http.RequestMethod.POST, JSON.stringify(payload));
     if (!r.ok()) throw new Error(Api.errorOf(r));
     return JSON.parse(r.body) as SubmitResp;
+  }
+
+}
+
+// ============ 班级数据（分数/金币/日志/分组） ============
+export interface ScoreRow {
+  sid: string;
+  name: string;
+  score: number;
+  gold: number;
+}
+
+export class ClassApi {
+  /** 整包班级数据（原样 JSON 字符串，改完再回传） */
+  static async load(): Promise<string> {
+    const r = await Api.request(`/api/class/${Api.classId}`, http.RequestMethod.GET);
+    if (!r.ok()) throw new Error('读取班级数据失败');
+    const o = JSON.parse(r.body) as Record<string, Object>;
+    const data = o['data'] as Object;
+    return JSON.stringify(data);
+  }
+
+  static async save(json: string): Promise<void> {
+    const payload: Record<string, Object> = { 'data': JSON.parse(json) as Object };
+    const r = await Api.request(`/api/class/${Api.classId}`, http.RequestMethod.POST,
+      JSON.stringify(payload));
+    if (!r.ok()) throw new Error('保存失败 HTTP ' + r.code);
+  }
+
+  static async meta(): Promise<string> {
+    const r = await Api.request(`/api/class/${Api.classId}/homework/meta`, http.RequestMethod.GET);
+    if (!r.ok()) throw new Error('读取作业元信息失败');
+    return r.body;
+  }
+
+  static rowsOf(json: string): ScoreRow[] {
+    const out: ScoreRow[] = [];
+    try {
+      const d = JSON.parse(json) as Record<string, Object>;
+      const scores = d['scores'] as Record<string, Object>;
+      const golds = d['gold'] as Record<string, Object>;
+      if (scores === undefined) return out;
+      const keys = Object.keys(scores);
+      for (const sid of keys) {
+        if (sid === '0') continue;
+        const row = scores[sid];
+        let name = '学号' + sid;
+        let score = 0;
+        if (Array.isArray(row)) {
+          const arr = row as Object[];
+          if (arr.length > 1) {
+            name = arr[0] as string;
+            score = arr[1] as number;
+          }
+        } else {
+          const o = row as Record<string, Object>;
+          if (o['name'] !== undefined) name = o['name'] as string;
+          if (o['score'] !== undefined) score = o['score'] as number;
+        }
+        let gold = 0;
+        if (golds !== undefined && golds[sid] !== undefined) {
+          const g = golds[sid] as Record<string, Object>;
+          if (g['amount'] !== undefined) gold = g['amount'] as number;
+        }
+        out.push({ sid: sid, name: name, score: score, gold: gold });
+      }
+    } catch (e) {
+      // 数据不合法时返回空表
+    }
+    return out;
+  }
+
+  /** 加减分 / 加减金币，同时写一条操作日志，然后整包回写 */
+  static async adjust(sid: string, scoreDelta: number, goldDelta: number, reason: string): Promise<string> {
+    const json = await ClassApi.load();
+    const d = JSON.parse(json) as Record<string, Object>;
+
+    const scores = d['scores'] as Record<string, Object>;
+    if (scores === undefined || scores[sid] === undefined) return '没有学号 ' + sid;
+    const row = scores[sid];
+    let name = '学号' + sid;
+    let newScore = 0;
+    let oldScore = 0;
+    if (Array.isArray(row)) {
+      const arr = row as Object[];
+      name = arr[0] as string;
+      oldScore = arr[1] as number;
+      newScore = oldScore + scoreDelta;
+      arr[1] = newScore;
+    } else {
+      const o = row as Record<string, Object>;
+      if (o['name'] !== undefined) name = o['name'] as string;
+      if (o['score'] !== undefined) oldScore = o['score'] as number;
+      newScore = oldScore + scoreDelta;
+      o['score'] = newScore;
+    }
+
+    let golds = d['gold'] as Record<string, Object>;
+    if (golds === undefined) {
+      golds = {};
+      d['gold'] = golds;
+    }
+    let entry = golds[sid] as Record<string, Object>;
+    if (entry === undefined) {
+      entry = { 'amount': 0 };
+      golds[sid] = entry;
+    }
+    const oldGold = entry['amount'] !== undefined ? entry['amount'] as number : 0;
+    let newGold = oldGold;
+    if (goldDelta !== 0) {
+      newGold = Math.max(0, oldGold + goldDelta);
+      entry['amount'] = newGold;
+    }
+
+    ClassApi.pushLog(d, scoreDelta !== 0 ? '分数调整' : '金币调整', sid, name,
+      scoreDelta !== 0 ? scoreDelta : goldDelta,
+      scoreDelta !== 0 ? newScore : newGold, reason);
+
+    await ClassApi.save(JSON.stringify(d));
+    return scoreDelta !== 0
+      ? `✓ ${name} 分数 ${oldScore} → ${newScore}`
+      : `✓ ${name} 金币 ${oldGold} → ${newGold}`;
+  }
+
+  private static pushLog(d: Record<string, Object>, action: string, sid: string, name: string,
+                        change: number, current: number, reason: string): void {
+    const now = new Date();
+    const ts = `${now.getFullYear()}/${(now.getMonth() + 1).toString().padStart(2, '0')}/` +
+      `${now.getDate().toString().padStart(2, '0')} ${now.getHours().toString().padStart(2, '0')}:` +
+      `${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+    let logs = d['logs'] as Object[];
+    if (logs === undefined) logs = [];
+    const entry: Record<string, Object> = {
+      'timestamp': ts, 'action': action, 'student_id': sid, 'student_name': name,
+      'score_change': change, 'current_score': current, 'reason': reason,
+      'page': 'harmony', 'user_role': 'teacher'
+    };
+    logs.unshift(entry);
+    d['logs'] = logs.length > 2000 ? logs.slice(0, 2000) : logs;
+  }
+
+  /** 抽奖：周五 12:00 后开放，单抽 160 / 十连 1600，rewards 的 probability 当权重 */
+  static async gacha(sid: string, times: number): Promise<string> {
+    const now = new Date();
+    if (now.getDay() !== 5 || now.getHours() < 12) return '抽奖只在周五 12:00 之后开放';
+    const cost = times >= 10 ? 1600 : 160;
+
+    const json = await ClassApi.load();
+    const d = JSON.parse(json) as Record<string, Object>;
+    const scores = d['scores'] as Record<string, Object>;
+    if (scores === undefined || scores[sid] === undefined) return '没有学号 ' + sid;
+
+    let golds = d['gold'] as Record<string, Object>;
+    if (golds === undefined) {
+      golds = {};
+      d['gold'] = golds;
+    }
+    let entry = golds[sid] as Record<string, Object>;
+    if (entry === undefined) {
+      entry = { 'amount': 0 };
+      golds[sid] = entry;
+    }
+    const have = entry['amount'] !== undefined ? entry['amount'] as number : 0;
+    if (have < cost) return `金币不够：现有 ${have}，需要 ${cost}`;
+
+    // 奖励池
+    const names: string[] = [];
+    const weights: number[] = [];
+    const gains: number[] = [];
+    const rewards = d['rewards'] as Record<string, Object>;
+    if (rewards !== undefined) {
+      const rarities = Object.keys(rewards);
+      for (const rarity of rarities) {
+        if (rarity === 'hidden_rewards') continue;
+        const arr = rewards[rarity] as Object[];
+        if (!Array.isArray(arr)) continue;
+        for (const item of arr) {
+          const o = item as Record<string, Object>;
+          names.push((o['name'] !== undefined ? o['name'] as string : '奖励') + `[${rarity}]`);
+          weights.push(o['probability'] !== undefined ? o['probability'] as number : 1);
+          gains.push(o['score'] !== undefined ? o['score'] as number : 0);
+        }
+      }
+      const hidden = rewards['hidden_rewards'] as Object[];
+      if (Array.isArray(hidden)) {
+        for (const item of hidden) {
+          const o = item as Record<string, Object>;
+          names.push((o['name'] !== undefined ? o['name'] as string : '奖励') + '[SP]');
+          weights.push(o['probability'] !== undefined ? o['probability'] as number : 1);
+          gains.push(o['score'] !== undefined ? o['score'] as number : 0);
+        }
+      }
+    }
+    const total = weights.reduce((a, b) => a + b, 0);
+
+    const row = scores[sid];
+    let name = '学号' + sid;
+    let score = 0;
+    let scoreArr: Object[] | null = null;
+    if (Array.isArray(row)) {
+      scoreArr = row as Object[];
+      name = scoreArr[0] as string;
+      score = scoreArr[1] as number;
+    } else {
+      const o = row as Record<string, Object>;
+      if (o['name'] !== undefined) name = o['name'] as string;
+      if (o['score'] !== undefined) score = o['score'] as number;
+    }
+
+    const lines: string[] = [];
+    const count = times >= 10 ? 10 : 1;
+    for (let i = 0; i < count; i++) {
+      let idx = 0;
+      let pick = Math.floor(Math.random() * Math.max(total, 1));
+      if (total > 0) {
+        for (let k = 0; k < weights.length; k++) {
+          pick -= weights[k];
+          if (pick < 0) {
+            idx = k;
+            break;
+          }
+        }
+      }
+      const gain = total > 0 ? gains[idx] : 0;
+      score += gain;
+      lines.push(total > 0 ? `${names[idx]}${gain !== 0 ? ' +' + gain + ' 学分' : ''}` : '谢谢参与');
+    }
+
+    if (scoreArr !== null) {
+      scoreArr[1] = score;
+    } else {
+      (row as Record<string, Object>)['score'] = score;
+    }
+    entry['amount'] = have - cost;
+    ClassApi.pushLog(d, times >= 10 ? '十连抽消耗' : '抽奖消耗', sid, name, -cost, have - cost, `${times} 次`);
+    await ClassApi.save(JSON.stringify(d));
+    return lines.join('\n') + `\n金币 ${have} → ${have - cost}·学分 ${score}`;
+  }
+
+  static async initHomework(count: number, subjects: string[]): Promise<string> {
+    const names: Record<string, Object> = {};
+    subjects.forEach((s, i) => { names[i.toString()] = s; });
+    const payload: Record<string, Object> = {
+      'student_count': count, 'subject_count': subjects.length, 'subject_names': names
+    };
+    const r = await Api.request(`/api/class/${Api.classId}/homework/init`,
+      http.RequestMethod.POST, JSON.stringify(payload));
+    if (!r.ok()) throw new Error('初始化失败 HTTP ' + r.code);
+    return `✓ 初始化 ${count} 人 × ${subjects.length} 科`;
+  }
+
+  static async journal(sid: number): Promise<string> {
+    const r = await Api.request(`/api/class/${Api.classId}/journal/${sid}`, http.RequestMethod.GET);
+    if (!r.ok()) throw new Error('读取历程失败');
+    const o = JSON.parse(r.body) as Record<string, Object>;
+    return o['journal'] !== undefined ? o['journal'] as string : '';
+  }
+
+  static async journalAdd(sid: number, text: string): Promise<void> {
+    const payload: Record<string, Object> = { 'student_id': sid.toString(), 'content': text };
+    const r = await Api.request(`/api/class/${Api.classId}/journal`, http.RequestMethod.POST,
+      JSON.stringify(payload));
+    if (!r.ok()) throw new Error('追加失败 HTTP ' + r.code);
+  }
+
+  static logsText(json: string, limit: number): string[] {
+    const out: string[] = [];
+    try {
+      const d = JSON.parse(json) as Record<string, Object>;
+      const logs = d['logs'] as Object[];
+      if (logs === undefined) return out;
+      for (let i = 0; i < Math.min(logs.length, limit); i++) {
+        const l = logs[i] as Record<string, Object>;
+        const a = l['action'] !== undefined ? l['action'] as string : '';
+        const n = l['student_name'] !== undefined ? l['student_name'] as string : '';
+        const t = l['timestamp'] !== undefined ? l['timestamp'] as string : '';
+        const r = l['reason'] !== undefined ? l['reason'] as string : '';
+        const c = l['score_change'] !== undefined ? l['score_change'] as number : 0;
+        out.push(`${t} · ${a} · ${n} ${c >= 0 ? '+' : ''}${c} · ${r}`);
+      }
+    } catch (e) {
+      // 忽略坏数据
+    }
+    return out;
   }
 }

@@ -6,6 +6,7 @@ import { promptAction } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { Api, ClassInfo, Student } from '../model/Api';
 import { Store } from '../model/Store';
+import { MoreSheet } from './MoreSheet';
 
 @Entry
 @Component
@@ -27,6 +28,7 @@ struct Index {
   @State date: string = '';
   @State marks: Record<string, boolean[]> = {};   // 学号 → 各科目是否已交（按 subjects 顺序）
   @State target: number = -1;                     // 当前要登记的学生下标，-1 表示未选
+  @State moreOpen: boolean = false;                     // 当前要登记的学生下标，-1 表示未选
 
   private ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
@@ -233,6 +235,11 @@ struct Index {
           .backgroundColor('#f2f2f2')
           .fontColor('#333333')
           .onClick(() => { this.page = 0; })
+        Button('更多')
+          .fontSize(13)
+          .backgroundColor('#f2f2f2')
+          .fontColor('#333333')
+          .onClick(() => { this.moreOpen = true; })
         Button('刷新')
           .fontSize(13)
           .enabled(!this.loading)
@@ -327,6 +334,10 @@ struct Index {
       }
       .width('100%')
       .height('100%')
+
+      if (this.moreOpen) {
+        MoreSheet({ onClose: () => { this.moreOpen = false; } })
+      }
 
       if (this.page === 1 && this.target >= 0) {
         Column() {
