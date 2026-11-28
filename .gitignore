@@ -8,3 +8,11 @@ clients/android/app/build/
 clients/ios/OpenStu.xcodeproj/
 clients/ios/*.xcworkspace/
 *.o
+
+# 仓库原有规则（保持原样）
+file.py
+input.txt
+node_modules/
+netlify/functions/*.zip
+.DS_Store
+*.log
