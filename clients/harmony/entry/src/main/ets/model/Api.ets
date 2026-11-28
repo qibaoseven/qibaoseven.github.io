@@ -679,4 +679,161 @@ export class ClassApi {
     await ClassApi.save(JSON.stringify(d));
     return `✓ 执行完成：改动 ${applied} 人次`;
   }
+
+  /** 分组列表文本（含人数与组均分） */
+  static groupLines(json: string): string[] {
+    const out: string[] = [];
+    try {
+      const d = JSON.parse(json) as Record<string, Object>;
+      const groups = d['groups'] as Record<string, Object>;
+      const scores = d['scores'] as Record<string, Object>;
+      if (groups === undefined) return ['（还没有分组）'];
+      Object.keys(groups).forEach((g) => {
+        const mem = groups[g] as Object[];
+        let sum = 0;
+        const names: string[] = [];
+        if (Array.isArray(mem)) {
+          mem.forEach((sid) => {
+            const row = scores[sid as string];
+            let sc = 0;
+            let nm = '学号' + (sid as string);
+            if (Array.isArray(row)) { nm = (row as Object[])[0] as string; sc = (row as Object[])[1] as number; }
+            else if (row !== undefined) {
+              const o = row as Record<string, Object>;
+              if (o['name'] !== undefined) nm = o['name'] as string;
+              sc = o['score'] !== undefined ? o['score'] as number : 0;
+            }
+            sum += sc; names.push(nm);
+          });
+        }
+        const n = Array.isArray(mem) ? mem.length : 0;
+        out.push(`▸ ${g}（${n} 人，均分 ${n > 0 ? (sum / n).toFixed(1) : '0'}）  ${names.join('、')}`);
+      });
+    } catch (e) {
+      out.push('分组数据解析失败');
+    }
+    return out;
+  }
+
+  /** 分组增删加移：op = create / delete / add / remove */
+  static async groupEdit(name: string, sid: string, op: string): Promise<string> {
+    const json = await ClassApi.load();
+    const d = JSON.parse(json) as Record<string, Object>;
+    let groups = d['groups'] as Record<string, Object>;
+    if (groups === undefined) { groups = {}; }
+    if (op === 'create') {
+      if (groups[name] !== undefined) return `分组已存在：${name}`;
+      groups[name] = [];
+    } else if (op === 'delete') {
+      if (groups[name] === undefined) return `没有这个分组：${name}`;
+      const fresh: Record<string, Object> = {};
+      Object.keys(groups).forEach((k) => { if (k !== name) fresh[k] = groups[k] as Object; });
+      groups = fresh;
+    } else {
+      if (groups[name] === undefined) return `没有这个分组：${name}`;
+      const mem = (groups[name] !== undefined ? groups[name] : []) as Object[];
+      const ids: string[] = Array.isArray(mem) ? mem.map((x) => x as string) : [];
+      const list: Object[] = [];
+      ids.forEach((x) => { if (op === 'add' ? true : x !== sid) list.push(x); });
+      if (op === 'add' && ids.indexOf(sid) < 0) list.push(sid);
+      groups[name] = list;
+    }
+    d['groups'] = groups;
+    await ClassApi.save(JSON.stringify(d));
+    return `✓ 分组「${name}」已更新`;
+  }
+
+  /** 每日汇报状态文本 */
+  static reportText(json: string): string[] {
+    const out: string[] = [];
+    try {
+      const d = JSON.parse(json) as Record<string, Object>;
+      const dr = d['dailyReport'] as Record<string, Object>;
+      const now = new Date();
+      const key = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+      const today = dr !== undefined ? dr[key] as Record<string, Object> : undefined;
+      if (today === undefined) out.push('今日：还没有记录');
+      else out.push(`今日：${(today['allReported'] as boolean) ? '✅ 全部已汇报' : '⏳ 进行中'}  最后 ${today['lastReportTime'] !== undefined ? today['lastReportTime'] as string : '—'}`);
+      if (dr !== undefined) {
+        Object.keys(dr).slice(-7).forEach((k) => {
+          const o = dr[k] as Record<string, Object>;
+          out.push(`  ${k}  ${(o['allReported'] as boolean) ? '全部已汇报' : '未全部汇报'}`);
+        });
+      }
+    } catch (e) {
+      out.push('汇报数据解析失败');
+    }
+    return out;
+  }
+
+  /** 全部已汇报 / 重置 */
+  static async reportWrite(op: string): Promise<string> {
+    const json = await ClassApi.load();
+    const d = JSON.parse(json) as Record<string, Object>;
+    let dr = d['dailyReport'] as Record<string, Object>;
+    if (dr === undefined) dr = {};
+    const now = new Date();
+    const key = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+    if (op === 'reset') {
+      const fresh: Record<string, Object> = {};
+      Object.keys(dr).forEach((k) => { if (k !== key) fresh[k] = dr[k] as Object; });
+      dr = fresh;
+    }
+    else {
+      const t: Record<string, Object> = {};
+      t['allReported'] = true;
+      t['lastReportTime'] = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:00`;
+      dr[key] = t;
+    }
+    d['dailyReport'] = dr;
+    await ClassApi.save(JSON.stringify(d));
+    return op === 'reset' ? '✓ 已重置今日汇报' : '✓ 已标记全班已汇报';
+  }
+
+  /** 批量加减全班（写日志） */
+  static async reportBatch(value: number, reason: string): Promise<string> {
+    const json = await ClassApi.load();
+    const d = JSON.parse(json) as Record<string, Object>;
+    const scores = d['scores'] as Record<string, Object>;
+    let logs = d['logs'] as Object[];
+    if (!Array.isArray(logs)) logs = [];
+    const now = new Date();
+    const key = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}`;
+    let n = 0;
+    Object.keys(scores).forEach((sid) => {
+      if (sid === '0') return;
+      const row = scores[sid];
+      let name = '学号' + sid;
+      let ns = 0;
+      if (Array.isArray(row)) {
+        const arr = row as Object[];
+        name = arr[0] as string;
+        ns = (arr[1] as number) + value;
+        arr[1] = ns;
+      } else {
+        const o = row as Record<string, Object>;
+        if (o['name'] !== undefined) name = o['name'] as string;
+        ns = (o['score'] !== undefined ? o['score'] as number : 0) + value;
+        o['score'] = ns;
+      }
+      logs.unshift({
+        'timestamp': `${key} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:00`,
+        'action': '每日汇报批量加分', 'student_id': sid, 'student_name': name,
+        'score_change': value, 'current_score': ns,
+        'reason': reason.length > 0 ? reason : '每日汇报', 'page': 'harmony', 'user_role': 'teacher'
+      });
+      n++;
+    });
+    d['logs'] = logs.length > 2000 ? logs.slice(0, 2000) : logs;
+    d['scores'] = scores;
+    let dr = d['dailyReport'] as Record<string, Object>;
+    if (dr === undefined) dr = {};
+    const t: Record<string, Object> = {};
+    t['allReported'] = true;
+    t['lastReportTime'] = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:00`;
+    dr[key] = t;
+    d['dailyReport'] = dr;
+    await ClassApi.save(JSON.stringify(d));
+    return `✓ 已对 ${n} 人批量 ${value > 0 ? '+' : ''}${value}`;
+  }
 }

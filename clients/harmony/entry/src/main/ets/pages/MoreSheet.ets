@@ -23,6 +23,12 @@ export struct MoreSheet {
   @State initCount: string = '51';
   @State initSubjects: string = '语文,数学';
   @State journalInput: string = '';
+  @State groupName: string = '';
+  @State groupSid: string = '';
+  @State groupLines: string[] = [];
+  @State reportLines: string[] = [];
+  @State batchDelta: string = '2';
+  @State batchReason: string = '';
 
   aboutToAppear(): void {
     this.reload();
@@ -52,6 +58,8 @@ export struct MoreSheet {
       this.metaNames = n;
       this.extra = ClassApi.extraLines(json);
       this.eventLines = ClassApi.eventLines(json);
+      this.groupLines = ClassApi.groupLines(json);
+      this.reportLines = ClassApi.reportText(json);
     } catch (e) {
       this.msg = '读取失败：' + (e as Error).message;
     }
@@ -78,6 +86,41 @@ export struct MoreSheet {
       await this.reload();
     } catch (e) {
       this.msg = '失败：' + (e as Error).message;
+    }
+    this.busy = false;
+  }
+
+  async doGroup(op: string): Promise<void> {
+    this.busy = true;
+    try {
+      this.msg = await ClassApi.groupEdit(this.groupName.trim(), this.groupSid.trim(), op);
+      await this.reload();
+    } catch (e) {
+      this.msg = '操作失败：' + (e as Error).message;
+    }
+    this.busy = false;
+  }
+
+  async doReportWrite(op: string): Promise<void> {
+    this.busy = true;
+    try {
+      this.msg = await ClassApi.reportWrite(op);
+      await this.reload();
+    } catch (e) {
+      this.msg = '操作失败：' + (e as Error).message;
+    }
+    this.busy = false;
+  }
+
+  async doReportBatch(): Promise<void> {
+    const v = Number(this.batchDelta);
+    if (isNaN(v) || v === 0) { this.msg = '加减值要填非 0 数字'; return; }
+    this.busy = true;
+    try {
+      this.msg = await ClassApi.reportBatch(v, this.batchReason);
+      await this.reload();
+    } catch (e) {
+      this.msg = '操作失败：' + (e as Error).message;
     }
     this.busy = false;
   }
@@ -137,7 +180,7 @@ export struct MoreSheet {
   @Builder
   tabBar() {
     Row({ space: 6 }) {
-      ForEach(['分数', '金币', '日志', '初始化', '历程', '其它', '自动'], (label: string, i: number) => {
+      ForEach(['分数', '金币', '日志', '初始化', '历程', '分组', '汇报', '其它', '自动'], (label: string, i: number) => {
         Button(label)
           .fontSize(12)
           .backgroundColor(this.tab === i ? '#3478f6' : '#f2f2f2')
@@ -222,7 +265,7 @@ export struct MoreSheet {
             }, (t: string, i: number) => `${i}-${t}`)
           }
 
-          if (this.tab === 6) {
+          if (this.tab === 8) {
             Text('自动事件（规则同网页：daily / weekly / monthly，同一天只跑一次）')
               .fontSize(11).fontColor('#888888').width('100%')
             ForEach(this.eventLines, (l: string) => {
@@ -233,7 +276,47 @@ export struct MoreSheet {
           }
 
           if (this.tab === 5) {
-            Text('职位 / 考试 / 每日汇报 / 备份 / 账号（只读）').fontSize(12).fontWeight(FontWeight.Bold)
+            Text('分组管理（建组 / 删组 / 加人 / 移人，数据与网页同一份）')
+              .fontSize(11).fontColor('#888888').width('100%')
+            TextInput({ placeholder: '分组名，如 第一组', text: this.groupName })
+              .onChange((v: string) => { this.groupName = v; })
+            TextInput({ placeholder: '学号', text: this.groupSid })
+              .onChange((v: string) => { this.groupSid = v; })
+            Row({ space: 6 }) {
+              Button('创建').fontSize(12).onClick(() => { this.doGroup('create'); })
+              Button('删除').fontSize(12).onClick(() => { this.doGroup('delete'); })
+              Button('加人').fontSize(12).onClick(() => { this.doGroup('add'); })
+              Button('移人').fontSize(12).onClick(() => { this.doGroup('remove'); })
+            }.width('100%')
+            ForEach(this.groupLines, (l: string) => {
+              Text(l).fontSize(11).fontColor('#555555').width('100%').padding(6)
+                .backgroundColor(Color.White).borderRadius(6)
+            }, (l: string, i: number) => `${i}-${l}`)
+            Text(this.msg).fontSize(11).fontColor('#3478f6')
+          }
+
+          if (this.tab === 6) {
+            Text('每日汇报（写操作与网页一致：全部已汇报 / 批量加减 / 重置）')
+              .fontSize(11).fontColor('#888888').width('100%')
+            ForEach(this.reportLines, (l: string) => {
+              Text(l).fontSize(11).fontColor('#555555').width('100%').padding(6)
+                .backgroundColor(Color.White).borderRadius(6)
+            }, (l: string, i: number) => `${i}-${l}`)
+            Row({ space: 6 }) {
+              TextInput({ placeholder: '加减值，如 2', text: this.batchDelta })
+                .width(110).onChange((v: string) => { this.batchDelta = v; })
+              TextInput({ placeholder: '原因', text: this.batchReason })
+                .layoutWeight(1).onChange((v: string) => { this.batchReason = v; })
+            }.width('100%')
+            Row({ space: 6 }) {
+              Button('✅ 全部已汇报').fontSize(12).onClick(() => { this.doReportWrite('all'); })
+              Button('⬇ 批量应用到全班').fontSize(12).onClick(() => { this.doReportBatch(); })
+              Button('↺ 重置').fontSize(12).onClick(() => { this.doReportWrite('reset'); })
+            }.width('100%')
+          }
+
+          if (this.tab === 7) {
+            Text('职位 / 考试 / 备份 / 账号（只读）').fontSize(12).fontWeight(FontWeight.Bold)
             ForEach(this.extra, (l: string) => {
               Text(l).fontSize(11).fontColor('#555555').width('100%').padding(6)
                 .backgroundColor(Color.White).borderRadius(6)

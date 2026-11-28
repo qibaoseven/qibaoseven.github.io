@@ -76,6 +76,117 @@ class MoreViewModel : ViewModel() {
         }
     }
 
+
+    fun groupEdit(store: Store, name: String, sid: String, op: String) {
+        val d = data ?: return
+        if (name.isBlank()) { message = "先填分组名"; return }
+        store.applyToApi()
+        viewModelScope.launch {
+            busy = true
+            message = withContext(Dispatchers.IO) { mutateGroup(d, name.trim(), sid.trim(), op) }
+            busy = false
+            load(store)
+        }
+    }
+
+    private fun mutateGroup(base: JSONObject, group: String, sid: String, op: String): String {
+        return try {
+            val data = JSONObject(base.toString())
+            val groups = data.optJSONObject("groups") ?: JSONObject().also { data.put("groups", it) }
+            when (op) {
+                "create" -> {
+                    if (groups.has(group)) return "分组已存在：$group"
+                    groups.put(group, JSONArray())
+                }
+                "delete" -> {
+                    if (!groups.has(group)) return "没有这个分组：$group"
+                    groups.remove(group)
+                }
+                else -> {
+                    if (!groups.has(group)) return "没有这个分组：$group"
+                    val mem = groups.optJSONArray(group) ?: JSONArray().also { groups.put(group, it) }
+                    val ids = (0 until mem.length()).map { mem.optString(it) }
+                    val list = JSONArray()
+                    if (op == "add") {
+                        ids.forEach { list.put(it) }
+                        if (!ids.contains(sid)) list.put(sid)
+                    } else ids.filter { it != sid }.forEach { list.put(it) }
+                    groups.put(group, list)
+                }
+            }
+            val r = Api.saveClassData(data)
+            if (r is Result.Err) "保存失败：${r.message}" else "✓ 分组「$group」已更新"
+        } catch (e: Exception) { "操作失败：${e.message}" }
+    }
+
+    fun reportWrite(store: Store, op: String) {
+        val d = data ?: return
+        store.applyToApi()
+        viewModelScope.launch {
+            busy = true
+            message = withContext(Dispatchers.IO) { mutateReport(d, op, 0.0, "") }
+            busy = false
+            load(store)
+        }
+    }
+
+    fun reportBatch(store: Store, delta: Double, reason: String) {
+        val d = data ?: return
+        store.applyToApi()
+        viewModelScope.launch {
+            busy = true
+            message = withContext(Dispatchers.IO) { mutateReport(d, "batch", delta, reason) }
+            busy = false
+            load(store)
+        }
+    }
+
+    private fun mutateReport(base: JSONObject, op: String, delta: Double, reason: String): String {
+        return try {
+            val data = JSONObject(base.toString())
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            val dr = data.optJSONObject("dailyReport") ?: JSONObject().also { data.put("dailyReport", it) }
+            if (op == "reset") {
+                dr.remove(today)
+            } else {
+                if (op == "batch") {
+                    val scores = data.optJSONObject("scores") ?: return "班级没有 scores 字段"
+                    val logs = data.optJSONArray("logs") ?: JSONArray().also { data.put("logs", it) }
+                    var n = 0
+                    val keys = scores.keys()
+                    while (keys.hasNext()) {
+                        val sid = keys.next()
+                        if (sid == "0") continue
+                        val row = scores.opt(sid)
+                        val name = if (row is JSONArray) row.optString(0, "学号$sid") else (row as JSONObject).optString("name", "学号$sid")
+                        val old = if (row is JSONArray) row.optDouble(1, 0.0) else (row as JSONObject).optDouble("score")
+                        val ns = old + delta
+                        if (row is JSONArray) row.put(1, ns) else (row as JSONObject).put("score", ns)
+                        logs.put(JSONObject().apply {
+                            put("timestamp", SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault()).format(Date()))
+                            put("action", "每日汇报批量加分")
+                            put("student_id", sid); put("student_name", name)
+                            put("score_change", delta); put("current_score", ns)
+                            put("reason", reason.ifBlank { "每日汇报" })
+                            put("page", "android"); put("user_role", "teacher")
+                        })
+                        n++
+                    }
+                    while (logs.length() > 2000) logs.remove(logs.length() - 1)
+                }
+                dr.put(today, JSONObject().apply {
+                    put("allReported", true)
+                    put("lastReportTime", SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date()))
+                })
+            }
+            val r = Api.saveClassData(data)
+            if (r is Result.Err) "保存失败：${r.message}"
+            else if (op == "reset") "✓ 已重置今日汇报"
+            else if (op == "batch") "✓ 已批量 ${if (delta > 0) "+" else ""}$delta"
+            else "✓ 已标记全班已汇报"
+        } catch (e: Exception) { "操作失败：${e.message}" }
+    }
+
     private fun mutateScoreGold(base: JSONObject, sid: String, scoreDelta: Double?, goldDelta: Double?, reason: String): String {
         return try {
             val data = JSONObject(base.toString())          // 深拷贝，避免改坏内存里的旧值
@@ -427,11 +538,11 @@ fun MoreScreen(store: Store, vm: MoreViewModel, roster: List<Student>, onBack: (
                 "gold" -> GoldAndGacha(store, vm, roster)
                 "journal" -> JournalPanel(store, roster)
                 "logs" -> LogsPanel(vm)
-                "groups" -> GroupsPanel(vm)
+                "groups" -> GroupsPanel(store, vm)
                 "init" -> InitPanel(store, vm)
                 "positions" -> PositionsPanel(store, vm)
                 "exam" -> ExamPanel(vm)
-                "report" -> ReportPanel(vm)
+                "report" -> ReportPanel(store, vm)
                 "backup" -> BackupPanel(vm)
                 "account" -> AccountPanel(store)
                 "autoEvents" -> AutoEventsPanel(store, vm)
@@ -598,10 +709,21 @@ private fun LogsPanel(vm: MoreViewModel) {
 }
 
 @Composable
-private fun GroupsPanel(vm: MoreViewModel) {
+private fun GroupsPanel(store: Store, vm: MoreViewModel) {
     val groups = vm.data?.optJSONObject("groups")
     val scores = vm.data?.optJSONObject("scores")
+    var name by remember { mutableStateOf("") }
+    var sid by remember { mutableStateOf("") }
     Column(Modifier.verticalScroll(rememberScrollState())) {
+        OutlinedTextField(name, { name = it }, label = { Text("分组名，如 第一组") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(sid, { sid = it }, label = { Text("学号") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Button(onClick = { vm.groupEdit(store, name, sid, "create") }) { Text("创建", style = MaterialTheme.typography.labelMedium) }
+            Button(onClick = { vm.groupEdit(store, name, sid, "delete") }) { Text("删除", style = MaterialTheme.typography.labelMedium) }
+            Button(onClick = { vm.groupEdit(store, name, sid, "add") }) { Text("加人", style = MaterialTheme.typography.labelMedium) }
+            Button(onClick = { vm.groupEdit(store, name, sid, "remove") }) { Text("移人", style = MaterialTheme.typography.labelMedium) }
+        }
+        vm.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         if (groups == null || groups.length() == 0) { Text("（还没有分组）"); return@Column }
         val keys = groups.keys()
         while (keys.hasNext()) {
@@ -610,12 +732,12 @@ private fun GroupsPanel(vm: MoreViewModel) {
             var sum = 0.0; var cnt = 0
             val names = mutableListOf<String>()
             for (i in 0 until members.length()) {
-                val sid = members.optString(i)
-                if (sid == "0") continue
-                val row = scores?.opt(sid)
-                val name = if (row is JSONArray) row.optString(0, sid) else sid
+                val s = members.optString(i)
+                if (s == "0") continue
+                val row = scores?.opt(s)
+                val nm = if (row is JSONArray) row.optString(0, s) else s
                 val sc = if (row is JSONArray) row.optDouble(1, 0.0) else 0.0
-                sum += sc; cnt++; names.add("$sid $name")
+                sum += sc; cnt++; names.add("$s $nm")
             }
             ListItem(
                 headlineContent = { Text(g) },
@@ -736,10 +858,12 @@ private fun ExamPanel(vm: MoreViewModel) {
 }
 
 @Composable
-private fun ReportPanel(vm: MoreViewModel) {
+private fun ReportPanel(store: Store, vm: MoreViewModel) {
     val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
     val dr = vm.data?.optJSONObject("dailyReport")?.optJSONObject(today)
     val scores = scoresOf(vm.data)
+    var delta by remember { mutableStateOf("2") }
+    var reason by remember { mutableStateOf("") }
     Column(Modifier.verticalScroll(rememberScrollState())) {
         ListItem(
             headlineContent = { Text("今日汇报状态") },
@@ -753,12 +877,23 @@ private fun ReportPanel(vm: MoreViewModel) {
         HorizontalDivider()
         ListItem(headlineContent = { Text("平均分") },
             trailingContent = { Text("%.1f".format(if (scores.isEmpty()) 0.0 else scores.sumOf { it.third } / scores.size)) })
-        Text("汇报的登记/批量加分为管理员权限，移动端先给只读视图。",
-            style = MaterialTheme.typography.bodySmall)
+        HorizontalDivider()
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedTextField(delta, { delta = it }, label = { Text("加减值") }, singleLine = true, modifier = Modifier.weight(1f))
+            OutlinedTextField(reason, { reason = it }, label = { Text("原因") }, singleLine = true, modifier = Modifier.weight(2f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Button(onClick = { vm.reportWrite(store, "all") }) { Text("全部已汇报", style = MaterialTheme.typography.labelMedium) }
+            Button(onClick = {
+                val v = delta.toDoubleOrNull()
+                if (v == null || v == 0.0) vm.message = "加减值要填非 0 数字" else vm.reportBatch(store, v, reason)
+            }) { Text("批量应用到全班", style = MaterialTheme.typography.labelMedium) }
+            Button(onClick = { vm.reportWrite(store, "reset") }) { Text("重置", style = MaterialTheme.typography.labelMedium) }
+        }
+        vm.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     }
 }
 
-@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun BackupPanel(vm: MoreViewModel) {
     val clip = androidx.compose.ui.platform.LocalClipboardManager.current
