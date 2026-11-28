@@ -1,6 +1,7 @@
 name: build-firmware
 
 # 硬件分支一有新提交就自动编译 + 发到 Release（tag: hw-latest，每次覆盖资产）
+# 一次出三个优化等级的固件，让用户自己挑：-Os（最小最稳）/ -O2 / -O3（代码更大）
 on:
   push:
     branches: [arduino-hardware-code]
@@ -31,16 +32,42 @@ jobs:
           arduino-cli lib install "LiquidCrystal I2C@1.1.2"
           arduino-cli lib install "Adafruit BusIO@1.17.4"
 
-      - name: 编译（1M64 单文件）
+      - name: 准备 sketch 目录
         run: |
           mkdir -p build/homework
           cp *.ino *.h *.cpp build/homework/
-          arduino-cli compile \
-            --fqbn esp8266:esp8266:generic:eesz=1M64 \
-            --output-dir out \
-            build/homework
-          cp out/homework.ino.bin openstu-v0.46-hw4-1M64.bin
-          ls -lh openstu-v0.46-hw4-1M64.bin
+
+      - name: 编译 -Os（默认，体积最小）
+        run: |
+          arduino-cli compile --fqbn esp8266:esp8266:generic:eesz=1M64 \
+            --output-dir out-os build/homework | tee log-os.txt
+          cp out-os/homework.ino.bin openstu-v0.47-1M64-os.bin
+
+      - name: 编译 -O2
+        run: |
+          arduino-cli compile --fqbn esp8266:esp8266:generic:eesz=1M64 \
+            --build-property "compiler.c.extra_flags=-O2" \
+            --build-property "compiler.cpp.extra_flags=-O2" \
+            --output-dir out-o2 build/homework | tee log-o2.txt
+          cp out-o2/homework.ino.bin openstu-v0.47-1M64-o2.bin
+
+      - name: 编译 -O3
+        run: |
+          arduino-cli compile --fqbn esp8266:esp8266:generic:eesz=1M64 \
+            --build-property "compiler.c.extra_flags=-O3" \
+            --build-property "compiler.cpp.extra_flags=-O3" \
+            --output-dir out-o3 build/homework | tee log-o3.txt
+          cp out-o3/homework.ino.bin openstu-v0.47-1M64-o3.bin
+
+      - name: 三个版本的体积
+        run: |
+          ls -lh openstu-v0.47-1M64-*.bin
+          for v in os o2 o3; do
+            echo "### -$v" >> body.md
+            grep -E "Code in flash|IRAM_ATTR" log-$v.txt >> body.md || true
+            echo "" >> body.md
+          done
+          cat body.md
 
       - name: 发布到 Release
         uses: softprops/action-gh-release@v2
@@ -48,7 +75,8 @@ jobs:
           tag_name: hw-latest
           name: 固件 · arduino-hardware-code
           prerelease: true
-          body: |
-            自动编译自 `arduino-hardware-code` 分支，提交 ${{ github.sha }}
-            烧录：`esptool.py --port <端口> write_flash 0x0 openstu-v0.46-hw4-1M64.bin`
-          files: openstu-v0.46-hw4-1M64.bin
+          body_path: body.md
+          files: |
+            openstu-v0.47-1M64-os.bin
+            openstu-v0.47-1M64-o2.bin
+            openstu-v0.47-1M64-o3.bin
