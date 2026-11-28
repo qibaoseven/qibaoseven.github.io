@@ -15,7 +15,7 @@ targets:
   OpenStuIOS:
     type: application
     platform: iOS
-    deploymentTarget: "16.0"
+    deploymentTarget: "15.0"
     sources:
       - path: Shared
       - path: iOS
@@ -31,7 +31,7 @@ targets:
   OpenStuMac:
     type: application
     platform: macOS
-    deploymentTarget: "13.0"
+    deploymentTarget: "12.0"
     sources:
       - path: Shared
       - path: macOS
@@ -44,7 +44,7 @@ targets:
   OpenStuTV:
     type: application
     platform: tvOS
-    deploymentTarget: "17.0"
+    deploymentTarget: "16.0"
     sources:
       - path: Shared
       - path: tvOS

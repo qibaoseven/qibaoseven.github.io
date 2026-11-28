@@ -265,13 +265,13 @@ struct MoreView: View {
     ]
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             List {
                 if let m = store.message {
                     Text(m).font(.caption).foregroundStyle(.secondary)
                 }
-                ForEach(entries, id: \.0) { key, label in
-                    NavigationLink(label) { destination(key) }
+                ForEach(entries.indices, id: \.self) { i in
+                    NavigationLink(entries[i].1) { destination(entries[i].0) }
                         .task { if store.data.isEmpty { await store.load() } }
                 }
             }
@@ -398,7 +398,7 @@ struct JournalPage: View {
                 Picker("学生", selection: $selected) {
                     ForEach(roster, id: \.id) { s in Text("\(s.id) \(s.name)").tag(s.id) }
                 }
-                .onChange(of: selected) { _, newValue in
+                .onChange(of: selected) { newValue in
                     Task { content = await store.journal(sid: newValue) }
                 }
                 Button("读取历程") { Task { content = await store.journal(sid: selected) } }
@@ -435,7 +435,8 @@ struct LogsPage: View {
         List {
             let logs = store.data["logs"] as? [[String: Any]] ?? []
             if logs.isEmpty { Text("（暂无日志）") }
-            ForEach(Array(logs.prefix(60).enumerated()), id: \.offset) { _, l in
+            ForEach(Array(logs.prefix(60).enumerated()), id: \.offset) { item in
+                let l = item.element
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(l["action"] as? String ?? "") · \(l["student_name"] as? String ?? "")")
@@ -460,7 +461,7 @@ struct GroupsPage: View {
             let groups = store.data["groups"] as? [String: Any] ?? [:]
             let scores = store.data["scores"] as? [String: Any] ?? [:]
             if groups.isEmpty { Text("（还没有分组）") }
-            ForEach(Array(groups.keys.sorted().enumerated()), id: \.offset) { _, g in
+            ForEach(groups.keys.sorted(), id: \.self) { g in
                 let members = groups[g] as? [Any] ?? []
                 let rows = members.compactMap { m -> (String, Double)? in
                     let sid = "\(m)"
@@ -527,7 +528,7 @@ struct PositionsPage: View {
             let pos = store.data["positions"] as? [String: Any] ?? [:]
             let list = pos["list"] as? [String: Any] ?? [:]
             if list.isEmpty { Text("（还没有职位）") }
-            ForEach(Array(list.keys.sorted().enumerated()), id: \.offset) { _, name in
+            ForEach(list.keys.sorted(), id: \.self) { name in
                 let item = list[name] as? [String: Any] ?? [:]
                 let members = (item["members"] as? [Any]) ?? []
                 VStack(alignment: .leading, spacing: 2) {
@@ -560,12 +561,12 @@ struct ExamPage: View {
             let exams = store.data["examScores"] as? [String: Any] ?? [:]
             let scores = store.data["scores"] as? [String: Any] ?? [:]
             if exams.isEmpty { Text("（还没有考试记录）") }
-            ForEach(Array(exams.keys.sorted().enumerated()), id: \.offset) { _, sid in
+            ForEach(exams.keys.sorted(), id: \.self) { sid in
                 let rows = exams[sid] as? [[String: Any]] ?? []
-                var name = "学号\(sid)"
-                if let arr = scores[sid] as? [Any], !arr.isEmpty { name = arr[0] as? String ?? name }
+                let name = studentName(scores, sid)
                 Section("学号 \(sid) \(name)") {
-                    ForEach(Array(rows.enumerated()), id: \.offset) { _, e in
+                    ForEach(Array(rows.enumerated()), id: \.offset) { item in
+                        let e = item.element
                         let sc = (e["score"] as? NSNumber)?.doubleValue ?? 0
                         let full = (e["full"] as? NSNumber)?.doubleValue ?? 0
                         HStack {
@@ -621,8 +622,12 @@ struct BackupPage: View {
             }()
             Section("整班数据 \(json.count) 字节") {
                 Text("和网页「导出数据」一样，就是 /api/class/{id} 的 data 原样。").font(.caption)
-                ShareLink(item: json) { Label("导出 / 分享 JSON", systemImage: "square.and.arrow.up") }
-                    .disabled(json.isEmpty)
+                Button {
+                    copyToClipboard(json)
+                } label: {
+                    Label("复制整班 JSON", systemImage: "doc.on.doc")
+                }
+                .disabled(json.isEmpty)
             }
             Section { Text(json.prefix(800) + (json.count > 800 ? "…" : "")).font(.caption2) }
         }
@@ -635,13 +640,48 @@ struct AccountPage: View {
 
     var body: some View {
         List {
-            LabeledContent("服务器", value: model.server)
-            LabeledContent("班级", value: model.classId)
-            LabeledContent("密码", value: model.password.isEmpty ? "未设置" : "已设置")
+            row("服务器", model.server)
+            row("班级", model.classId)
+            row("密码", model.password.isEmpty ? "未设置" : "已设置")
             Section {
                 Text("账号权限（root/admin/user）由网页端角色决定，原生端只按班级密码鉴权。").font(.caption)
             }
         }
         .navigationTitle("账号")
     }
+}
+
+
+// MARK: - 小工具（压低最低系统版本用）
+
+private func studentName(_ scores: [String: Any], _ sid: String) -> String {
+    if let arr = scores[sid] as? [Any], !arr.isEmpty, let n = arr[0] as? String { return n }
+    if let o = scores[sid] as? [String: Any], let n = o["name"] as? String { return n }
+    return "学号\(sid)"
+}
+
+private extension AccountPage {
+    @ViewBuilder
+    func row(_ key: String, _ value: String) -> some View {
+        HStack {
+            Text(key)
+            Spacer()
+            Text(value).foregroundStyle(.secondary).lineLimit(1)
+        }
+    }
+}
+
+#if os(macOS)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
+
+private func copyToClipboard(_ text: String) {
+    #if os(macOS)
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
+    #elseif os(iOS)
+    UIPasteboard.general.string = text
+    #endif
 }

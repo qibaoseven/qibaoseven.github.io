@@ -97,6 +97,12 @@ jobs:
           yes | sudo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
       - name: SDK 版本
         run: ls "$ANDROID_SDK_ROOT/platforms" | tail -3
+      - name: 准备 debug keystore 目录（runner 的 ~/.config 不可写）
+        run: |
+          mkdir -p "$HOME/.android" "$HOME/.config/.android" "$HOME/.android/keystore"
+          chmod -R u+rwX "$HOME/.config" "$HOME/.android" 2>/dev/null || true
+          echo "ANDROID_USER_HOME=$HOME/.android" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_HOME=$HOME/.android" >> "$GITHUB_ENV"
       - uses: gradle/actions/setup-gradle@v3
       - name: 编译 Debug APK
         working-directory: clients/android

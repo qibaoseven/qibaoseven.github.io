@@ -11,7 +11,7 @@ struct WatchRootView: View {
     @State private var push: (id: Int, name: String)?
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             List {
                 if let req = model.required {
                     Section {
