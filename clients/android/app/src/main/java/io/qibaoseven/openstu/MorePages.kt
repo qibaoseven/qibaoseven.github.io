@@ -253,6 +253,111 @@ class MoreViewModel : ViewModel() {
         }
     }
 
+    // ---------- 自动事件 ----------
+    fun runAutoEvents(store: Store) {
+        val d = data ?: return
+        store.applyToApi()
+        viewModelScope.launch {
+            busy = true
+            val msg = withContext(Dispatchers.IO) {
+                try {
+                    val data = JSONObject(d.toString())
+                    val arr = data.optJSONArray("autoEvents") ?: return@withContext "（还没有自动事件）"
+                    val cal = java.util.Calendar.getInstance()
+                    val df = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                    val today = df.format(Date())
+                    val scores = data.optJSONObject("scores") ?: JSONObject()
+                    var applied = 0
+                    for (i in 0 until arr.length()) {
+                        val ev = arr.optJSONObject(i) ?: continue
+                        val freq = ev.optString("frequency", "daily")
+                        val due = when (freq) {
+                            "weekly" -> cal.get(java.util.Calendar.DAY_OF_WEEK) - 1 == ev.optInt("dayOfWeek", 1)
+                            "monthly" -> cal.get(java.util.Calendar.DAY_OF_MONTH) == ev.optInt("dayOfMonth", 1)
+                            else -> true
+                        }
+                        if (!due) continue
+                        val lastRun = ev.optJSONObject("lastRun") ?: JSONObject()
+                        if (lastRun.optBoolean(today, false)) continue
+                        val targets = ev.optJSONArray("targets") ?: JSONArray()
+                        val ids = mutableListOf<String>()
+                        for (j in 0 until targets.length()) {
+                            when (val t = targets.optString(j)) {
+                                "all" -> ids += scores.keys().asSequence().toList()
+                                else -> if (t.startsWith("group:")) {
+                                    val g = data.optJSONObject("groups")?.optJSONArray(t.removePrefix("group:"))
+                                    if (g != null) for (k in 0 until g.length()) ids += g.optString(k)
+                                } else ids += t
+                            }
+                        }
+                        for (sid in ids.distinct()) {
+                            if (sid == "0") continue
+                            val row = scores.opt(sid) ?: continue
+                            val old = if (row is JSONArray) row.optDouble(1, 0.0) else (row as JSONObject).optDouble("score", 0.0)
+                            val new = old + ev.optDouble("change", 0.0)
+                            if (row is JSONArray) row.put(1, new) else (row as JSONObject).put("score", new)
+                            val name = if (row is JSONArray) row.optString(0) else (row as JSONObject).optString("name")
+                            val logs = data.optJSONArray("logs") ?: JSONArray().also { data.put("logs", it) }
+                            logs.put(JSONObject().apply {
+                                put("timestamp", SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault()).format(Date()))
+                                put("action", "自动事件"); put("student_id", sid); put("student_name", name)
+                                put("score_change", ev.optDouble("change", 0.0)); put("current_score", new)
+                                put("reason", ev.optString("reason", "自动事件")); put("page", "android")
+                            })
+                            applied++
+                        }
+                        lastRun.put(today, true)
+                        ev.put("lastRun", lastRun)
+                    }
+                    data.put("scores", scores)
+                    data.put("autoEvents", arr)
+                    when (val r = Api.saveClassData(data)) {
+                        is Result.Ok -> "✓ 执行完成：改动 $applied 人次"
+                        is Result.Err -> "保存失败: ${r.message}"
+                    }
+                } catch (e: Exception) { "执行失败: ${e.message}" }
+            }
+            message = msg
+            busy = false
+            load(store)
+        }
+    }
+
+    fun addAutoEvent(store: Store, name: String, freqSpec: String, targets: String, change: Double, reason: String) {
+        val d = data ?: return
+        store.applyToApi()
+        viewModelScope.launch {
+            busy = true
+            val msg = withContext(Dispatchers.IO) {
+                try {
+                    val data = JSONObject(d.toString())
+                    val arr = data.optJSONArray("autoEvents") ?: JSONArray().also { data.put("autoEvents", it) }
+                    val parts = freqSpec.split(":")
+                    val ev = JSONObject()
+                        .put("name", name)
+                        .put("frequency", parts[0].ifEmpty { "daily" })
+                        .put("change", change)
+                        .put("reason", reason.ifEmpty { "自动事件" })
+                        .put("lastRun", JSONObject())
+                    if (parts[0] == "weekly") ev.put("dayOfWeek", parts.getOrNull(1)?.toIntOrNull() ?: 1)
+                    if (parts[0] == "monthly") ev.put("dayOfMonth", parts.getOrNull(1)?.toIntOrNull() ?: 1)
+                    val t = JSONArray()
+                    targets.split(',').map { it.trim() }.filter { it.isNotEmpty() }.forEach { t.put(it) }
+                    ev.put("targets", t)
+                    arr.put(ev)
+                    data.put("autoEvents", arr)
+                    when (val r = Api.saveClassData(data)) {
+                        is Result.Ok -> "✓ 已添加「$name」"
+                        is Result.Err -> "保存失败: ${r.message}"
+                    }
+                } catch (e: Exception) { "添加失败: ${e.message}" }
+            }
+            message = msg
+            busy = false
+            load(store)
+        }
+    }
+
     // ---------- 初始化 ----------
     fun initHomework(store: Store, students: Int, subjects: List<String>) {
         store.applyToApi()
@@ -303,6 +408,7 @@ fun MoreScreen(store: Store, vm: MoreViewModel, roster: List<Student>, onBack: (
             "report" to "📋 每日汇报",
             "backup" to "💾 数据备份",
             "account" to "🔑 账号 / 连接",
+            "autoEvents" to "⚡ 自动事件",
         )
 
         if (section == null) {
@@ -328,6 +434,7 @@ fun MoreScreen(store: Store, vm: MoreViewModel, roster: List<Student>, onBack: (
                 "report" -> ReportPanel(vm)
                 "backup" -> BackupPanel(vm)
                 "account" -> AccountPanel(store)
+                "autoEvents" -> AutoEventsPanel(store, vm)
             }
             TextButton(onClick = { section = null }) { Text("← 回到更多功能") }
         }
@@ -681,5 +788,54 @@ private fun AccountPanel(store: Store) {
         HorizontalDivider()
         Text("要改这些去「配置」页；账号权限（root/admin/user）由网页端角色决定，移动端不单独维护。",
             style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+
+@Composable
+private fun AutoEventsPanel(store: Store, vm: MoreViewModel) {
+    var name by remember { mutableStateOf("每周一加分") }
+    var freq by remember { mutableStateOf("weekly:1") }
+    var targets by remember { mutableStateOf("all") }
+    var change by remember { mutableStateOf("+1") }
+    var reason by remember { mutableStateOf("") }
+
+    val events = vm.data?.optJSONArray("autoEvents")
+    Column(Modifier.verticalScroll(rememberScrollState())) {
+        if (events == null || events.length() == 0) {
+            Text("（还没有自动事件）", style = MaterialTheme.typography.bodySmall)
+        } else {
+            for (i in 0 until events.length()) {
+                val e = events.optJSONObject(i) ?: continue
+                val when_ = when (e.optString("frequency")) {
+                    "weekly" -> "周${e.optInt("dayOfWeek")}"
+                    "monthly" -> "${e.optInt("dayOfMonth")} 日"
+                    else -> ""
+                }
+                val t = e.optJSONArray("targets")?.let { a -> (0 until a.length()).joinToString(",") { a.optString(it) } } ?: ""
+                ListItem(
+                    headlineContent = { Text("[${i}] ${e.optString("name")}") },
+                    supportingContent = { Text("${e.optString("frequency")} $when_ · $t · ${e.optString("reason", "自动事件")}",
+                        style = MaterialTheme.typography.bodySmall) },
+                    trailingContent = { Text(String.format("%+.1f", e.optDouble("change", 0.0)), fontWeight = FontWeight.Bold) }
+                )
+                HorizontalDivider()
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Button(onClick = { vm.runAutoEvents(store) }) { Text("▶ 立即执行到期事件") }
+        Text("规则和网页一致：daily 每天、weekly 指定星期、monthly 指定日；同一事件同一天只跑一次。",
+            style = MaterialTheme.typography.bodySmall)
+
+        Spacer(Modifier.height(12.dp))
+        Text("添加事件", fontWeight = FontWeight.Medium)
+        OutlinedTextField(name, { name = it }, label = { Text("名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(freq, { freq = it }, label = { Text("频率 daily / weekly:1 / monthly:15") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(targets, { targets = it }, label = { Text("目标（all / group:组名 / 学号，逗号分隔）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(change, { change = it }, label = { Text("分值，例如 +1 或 -2") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(reason, { reason = it }, label = { Text("原因（可空）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        Button(onClick = {
+            vm.addAutoEvent(store, name, freq, targets, change.toDoubleOrNull() ?: 0.0, reason)
+        }) { Text("添加") }
     }
 }

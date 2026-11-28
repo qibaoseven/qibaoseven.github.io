@@ -188,6 +188,94 @@ final class MoreStore: ObservableObject {
         message = "✓ 发放 \(people) 人次，共 \(total) 金币"
     }
 
+    // MARK: 自动事件
+
+    func runAutoEvents() async {
+        var d = data
+        guard var events = d["autoEvents"] as? [[String: Any]], !events.isEmpty else {
+            message = "（还没有自动事件）"; return
+        }
+        let cal = Calendar.current
+        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
+        let today = df.string(from: Date())
+        var scores = d["scores"] as? [String: Any] ?? [:]
+        let groups = d["groups"] as? [String: Any] ?? [:]
+        var applied = 0
+
+        for i in events.indices {
+            let e = events[i]
+            let freq = e["frequency"] as? String ?? "daily"
+            var due = false
+            switch freq {
+            case "weekly":  due = (cal.component(.weekday, from: Date()) - 1) == (e["dayOfWeek"] as? Int ?? 1)
+            case "monthly": due = cal.component(.day, from: Date()) == (e["dayOfMonth"] as? Int ?? 1)
+            default:        due = true
+            }
+            if !due { continue }
+            var lastRun = e["lastRun"] as? [String: Any] ?? [:]
+            if lastRun[today] as? Bool == true { continue }
+
+            var ids: [String] = []
+            for t in (e["targets"] as? [Any]) ?? [] {
+                let target = "\(t)"
+                if target == "all" {
+                    ids += scores.keys.filter { $0 != "0" }
+                } else if target.hasPrefix("group:") {
+                    ids += (groups[String(target.dropFirst(6))] as? [Any])?.map { "\($0)" } ?? []
+                } else {
+                    ids.append(target)
+                }
+            }
+            let change = (e["change"] as? NSNumber)?.doubleValue ?? 0
+            for sid in Set(ids) where sid != "0" {
+                guard var row = scores[sid] else { continue }
+                var name = "学号\(sid)"; var old = 0.0
+                if var arr = row as? [Any], arr.count > 1 {
+                    name = arr[0] as? String ?? name
+                    old = (arr[1] as? NSNumber)?.doubleValue ?? 0
+                    arr[1] = old + change
+                    row = arr
+                } else if var o = row as? [String: Any] {
+                    name = o["name"] as? String ?? name
+                    old = (o["score"] as? NSNumber)?.doubleValue ?? 0
+                    o["score"] = old + change
+                    row = o
+                }
+                scores[sid] = row
+                appendLog(&d, action: "自动事件", sid: sid, name: name,
+                          change: change, current: old + change,
+                          reason: e["reason"] as? String ?? "自动事件")
+                applied += 1
+            }
+            lastRun[today] = true
+            events[i]["lastRun"] = lastRun
+        }
+        d["scores"] = scores
+        d["autoEvents"] = events
+        await save(d)
+        message = "✓ 执行完成：改动 \(applied) 人次"
+    }
+
+    func addAutoEvent(name: String, freqSpec: String, targets: String, change: Double, reason: String) async {
+        var d = data
+        var events = d["autoEvents"] as? [[String: Any]] ?? []
+        let parts = freqSpec.split(separator: ":").map(String.init)
+        var e: [String: Any] = [
+            "name": name,
+            "frequency": parts.first ?? "daily",
+            "change": change,
+            "reason": reason.isEmpty ? "自动事件" : reason,
+            "lastRun": [String: Any](),
+            "targets": targets.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
+        ]
+        if parts.first == "weekly" { e["dayOfWeek"] = Int(parts.count > 1 ? parts[1] : "1") ?? 1 }
+        if parts.first == "monthly" { e["dayOfMonth"] = Int(parts.count > 1 ? parts[1] : "1") ?? 1 }
+        events.append(e)
+        d["autoEvents"] = events
+        await save(d)
+        message = "✓ 已添加「\(name)」"
+    }
+
     func initHomework(students: Int, subjects: [String]) async {
         let a = ApiClient()
         await a.configure(cfg.server, cfg.classId, cfg.password)
@@ -262,6 +350,7 @@ struct MoreView: View {
         ("report", "📋 每日汇报"),
         ("backup", "💾 数据备份"),
         ("account", "🔑 账号 / 连接"),
+        ("autoEvents", "⚡ 自动事件"),
     ]
 
     var body: some View {
@@ -294,6 +383,7 @@ struct MoreView: View {
         case "report": ReportPage(store: store)
         case "backup": BackupPage(store: store)
         case "account": AccountPage(model: model)
+        case "autoEvents": AutoEventsPage(store: store)
         default: InitPage(store: store)
         }
     }
@@ -689,4 +779,55 @@ private func copyToClipboard(_ text: String) {
     #elseif os(iOS)
     UIPasteboard.general.string = text
     #endif
+}
+
+
+struct AutoEventsPage: View {
+    @ObservedObject var store: MoreStore
+    @State private var name = "每周一加分"
+    @State private var freq = "weekly:1"
+    @State private var targets = "all"
+    @State private var change = "+1"
+    @State private var reason = ""
+
+    var body: some View {
+        List {
+            let events = store.data["autoEvents"] as? [[String: Any]] ?? []
+            if events.isEmpty { Text("（还没有自动事件）") }
+            ForEach(events.indices, id: \.self) { i in
+                let e = events[i]
+                let freqText = e["frequency"] as? String ?? "daily"
+                let whenText: String = {
+                    if freqText == "weekly" { return "周\(e["dayOfWeek"] as? Int ?? 1)" }
+                    if freqText == "monthly" { return "\(e["dayOfMonth"] as? Int ?? 1) 日" }
+                    return ""
+                }()
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("[\(i)] \(e["name"] as? String ?? "")").bold()
+                        Text("\(freqText) \(whenText) · \(((e["targets"] as? [Any]) ?? []).map { "\($0)" }.joined(separator: ","))")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text(String(format: "%+.1f", (e["change"] as? NSNumber)?.doubleValue ?? 0)).bold()
+                }
+            }
+            Section("执行") {
+                Button("▶ 立即执行到期事件") { Task { await store.runAutoEvents() } }
+                Text("daily 每天、weekly 指定星期、monthly 指定日；同一事件同一天只跑一次。").font(.caption2)
+            }
+            Section("添加事件") {
+                TextField("名称", text: $name)
+                TextField("频率 daily / weekly:1 / monthly:15", text: $freq)
+                TextField("目标 all / group:组名 / 学号", text: $targets)
+                TextField("分值，例如 +1", text: $change)
+                TextField("原因（可空）", text: $reason)
+                Button("添加") {
+                    Task { await store.addAutoEvent(name: name, freqSpec: freq, targets: targets, change: Double(change) ?? 0, reason: reason) }
+                }
+            }
+            if let m = store.message { Section { Text(m).font(.caption) } }
+        }
+        .navigationTitle("自动事件")
+    }
 }

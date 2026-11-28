@@ -574,4 +574,109 @@ export class ClassApi {
     }
     return out;
   }
+
+  /** 自动事件列表文本 */
+  static eventLines(json: string): string[] {
+    const out: string[] = [];
+    try {
+      const d = JSON.parse(json) as Record<string, Object>;
+      const events = d['autoEvents'] as Object[];
+      if (Array.isArray(events)) {
+        events.forEach((v, i) => {
+          const e = v as Record<string, Object>;
+          const freq = e['frequency'] !== undefined ? e['frequency'] as string : 'daily';
+          let when = '';
+          if (freq === 'weekly') when = '周' + e['dayOfWeek'];
+          if (freq === 'monthly') when = e['dayOfMonth'] + ' 日';
+          const targets = e['targets'] as Object[];
+          const who = Array.isArray(targets) ? targets.join(',') : '';
+          const change = e['change'] !== undefined ? e['change'] as number : 0;
+          out.push(`[${i}] ${e['name']}  ${freq} ${when}  ${change >= 0 ? '+' : ''}${change}  ${who}`);
+        });
+      }
+    } catch (e) {
+      out.push('事件数据解析失败');
+    }
+    return out;
+  }
+
+  /** 执行到期事件：daily/weekly/monthly，按 targets 解析 all/group:/学号，写日志并整包保存 */
+  static async runAutoEvents(): Promise<string> {
+    const json = await ClassApi.load();
+    const d = JSON.parse(json) as Record<string, Object>;
+    const events = d['autoEvents'] as Object[];
+    if (!Array.isArray(events) || events.length === 0) return '（还没有自动事件）';
+
+    const now = new Date();
+    const key = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-` +
+      now.getDate().toString().padStart(2, '0');
+    let scores = d['scores'] as Record<string, Object>;
+    const groups = d['groups'] as Record<string, Object>;
+    let applied = 0;
+
+    for (const v of events) {
+      const e = v as Record<string, Object>;
+      const freq = e['frequency'] !== undefined ? e['frequency'] as string : 'daily';
+      let due = false;
+      if (freq === 'daily') due = true;
+      else if (freq === 'weekly') due = now.getDay() === (e['dayOfWeek'] !== undefined ? e['dayOfWeek'] as number : 1);
+      else if (freq === 'monthly') due = now.getDate() === (e['dayOfMonth'] !== undefined ? e['dayOfMonth'] as number : 1);
+      if (!due) continue;
+      const lastRun = (e['lastRun'] !== undefined ? e['lastRun'] : {}) as Record<string, Object>;
+      const ran = lastRun[key] !== undefined && (lastRun[key] as boolean);
+      if (ran) continue;
+
+      const ids: string[] = [];
+      const targets = e['targets'] as Object[];
+      if (Array.isArray(targets)) {
+        for (const t of targets) {
+          const tg = t as string;
+          if (tg === 'all') Object.keys(scores).forEach((sid) => ids.push(sid));
+          else if (tg.startsWith('group:')) {
+            const mem = groups[tg.substring(6)] as Object[];
+            if (Array.isArray(mem)) mem.forEach((m) => ids.push(m as string));
+          } else ids.push(tg);
+        }
+      }
+      const change = e['change'] !== undefined ? e['change'] as number : 0;
+      const reason = e['reason'] !== undefined ? e['reason'] as string : '自动事件';
+      const seen: string[] = [];
+      for (const sid of ids) {
+        if (sid === '0' || seen.indexOf(sid) >= 0) continue;
+        seen.push(sid);
+        if (scores[sid] === undefined) continue;
+        const row = scores[sid];
+        let name = '学号' + sid;
+        let newScore = 0;
+        if (Array.isArray(row)) {
+          const arr = row as Object[];
+          name = arr[0] as string;
+          newScore = (arr[1] as number) + change;
+          arr[1] = newScore;
+        } else {
+          const o = row as Record<string, Object>;
+          if (o['name'] !== undefined) name = o['name'] as string;
+          const old = o['score'] !== undefined ? o['score'] as number : 0;
+          newScore = old + change;
+          o['score'] = newScore;
+        }
+        let logs = d['logs'] as Object[];
+        if (!Array.isArray(logs)) logs = [];
+        logs.unshift({
+          'timestamp': `${key} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:00`,
+          'action': '自动事件', 'student_id': sid, 'student_name': name,
+          'score_change': change, 'current_score': newScore, 'reason': reason,
+          'page': 'harmony', 'user_role': 'system'
+        });
+        d['logs'] = logs.length > 2000 ? logs.slice(0, 2000) : logs;
+        applied++;
+      }
+      lastRun[key] = true;
+      e['lastRun'] = lastRun;
+    }
+    d['scores'] = scores;
+    d['autoEvents'] = events;
+    await ClassApi.save(JSON.stringify(d));
+    return `✓ 执行完成：改动 ${applied} 人次`;
+  }
 }

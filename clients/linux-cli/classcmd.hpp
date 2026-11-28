@@ -550,4 +550,154 @@ inline int cmdAccount(const Client& c) {
     return 0;
 }
 
+// ---------- 自动事件（对应网页 autoEvents） ----------
+// 数据结构：autoEvents = [{ name, frequency, dayOfWeek|dayOfMonth, targets, change, reason, lastRun:{日期:true} }]
+// 规则：daily 每天；weekly 指定星期（0=周日）；monthly 指定日；同一事件同一天只跑一次。
+
+inline std::string todayKey() {
+    std::string t = ts();
+    std::string out;
+    for (size_t i = 0; i < 10 && i < t.size(); ++i) out += (t[i] == '/') ? '-' : t[i];
+    return out;
+}
+
+inline int weekdayNow() {
+    time_t t = time(nullptr);
+    struct tm lt {};
+    localtime_r(&t, &lt);
+    return lt.tm_wday;
+}
+
+inline int monthDayNow() {
+    time_t t = time(nullptr);
+    struct tm lt {};
+    localtime_r(&t, &lt);
+    return lt.tm_mday;
+}
+
+inline std::vector<std::string> splitCsv(const std::string& s) {
+    std::vector<std::string> out;
+    std::string cur;
+    for (char ch : s) {
+        if (ch == ',') { if (!cur.empty()) out.push_back(cur); cur.clear(); }
+        else cur += ch;
+    }
+    if (!cur.empty()) out.push_back(cur);
+    for (auto& v : out) {
+        size_t b = v.find_first_not_of(' ');
+        size_t e = v.find_last_not_of(' ');
+        v = (b == std::string::npos) ? "" : v.substr(b, e - b + 1);
+    }
+    return out;
+}
+
+inline int cmdEvents(const Client& c) {
+    js::Value data = loadClassData(c);
+    const js::Value& ev = data["autoEvents"];
+    if (!ev.isArr() || ev.a.empty()) { std::printf("（还没有自动事件）\n"); return 0; }
+    int i = 0;
+    for (auto& e : ev.a) {
+        std::string freq = e["frequency"].asStr();
+        std::string when;
+        if (freq == "weekly") when = "周" + std::to_string((int)e["dayOfWeek"].n);
+        else if (freq == "monthly") when = std::to_string((int)e["dayOfMonth"].n) + " 日";
+        std::printf("[%d] %-16s %-8s %-8s %+6.1f  %s\n", i++, e["name"].asStr().c_str(), freq.c_str(),
+                    when.c_str(), e["change"].n, e["reason"].asStr().c_str());
+        std::printf("    目标: ");
+        for (auto& t : e["targets"].a) std::printf("%s ", t.asStr().c_str());
+        std::printf("\n");
+    }
+    return 0;
+}
+
+inline int cmdEventAdd(const Client& c, const std::string& name, const std::string& freqSpec,
+                       const std::string& targetsCsv, double change, const std::string& reason) {
+    js::Value data = loadClassData(c);
+    js::Value arr = data["autoEvents"];
+    if (!arr.isArr()) arr = js::Value::arr();
+
+    std::string freq = freqSpec, dayStr;
+    size_t colon = freqSpec.find(':');
+    if (colon != std::string::npos) { freq = freqSpec.substr(0, colon); dayStr = freqSpec.substr(colon + 1); }
+
+    js::Value ev = js::Value::obj()
+        .set("name", js::Value::str(name))
+        .set("frequency", js::Value::str(freq))
+        .set("change", js::Value::num(change))
+        .set("reason", js::Value::str(reason.empty() ? "自动事件" : reason))
+        .set("lastRun", js::Value::obj());
+    js::Value targets = js::Value::arr();
+    for (auto& t : splitCsv(targetsCsv)) targets.push(js::Value::str(t));
+    if (targets.a.empty()) { std::printf("至少给一个目标：all / group:组名 / 学号\n"); return 1; }
+    ev.set("targets", targets);
+    if (freq == "weekly") ev.set("dayOfWeek", js::Value::num(dayStr.empty() ? 1 : atof(dayStr.c_str())));
+    if (freq == "monthly") ev.set("dayOfMonth", js::Value::num(dayStr.empty() ? 1 : atof(dayStr.c_str())));
+    arr.push(ev);
+    data.set("autoEvents", arr);
+    saveClassData(c, data);
+    std::printf("✓ 已添加事件「%s」（%s，%+0.0f）\n", name.c_str(), freqSpec.c_str(), change);
+    return 0;
+}
+
+inline int cmdEventDel(const Client& c, int index) {
+    js::Value data = loadClassData(c);
+    js::Value arr = data["autoEvents"];
+    if (!arr.isArr() || index < 0 || index >= (int)arr.a.size()) { std::printf("没有第 %d 个事件\n", index); return 1; }
+    arr.a.erase(arr.a.begin() + index);
+    data.set("autoEvents", arr);
+    saveClassData(c, data);
+    std::printf("✓ 已删除第 %d 个事件\n", index);
+    return 0;
+}
+
+inline int cmdEventRun(const Client& c) {
+    js::Value data = loadClassData(c);
+    js::Value arr = data["autoEvents"];
+    if (!arr.isArr() || arr.a.empty()) { std::printf("（还没有自动事件）\n"); return 0; }
+
+    const std::string today = todayKey();
+    int applied = 0, skipped = 0;
+    for (auto& e : arr.a) {
+        const std::string freq = e["frequency"].asStr();
+        bool due = false;
+        if (freq == "daily") due = true;
+        else if (freq == "weekly") due = weekdayNow() == (int)e["dayOfWeek"].n;
+        else if (freq == "monthly") due = monthDayNow() == (int)e["dayOfMonth"].n;
+        if (!due) continue;
+        if (e["lastRun"][today].asBool()) { ++skipped; continue; }
+
+        js::Value scores = data["scores"];
+        std::vector<std::string> ids;
+        for (auto& t : e["targets"].a) {
+            const std::string tgt = t.asStr();
+            if (tgt == "all") {
+                for (auto& kv : scores.o) if (kv.first != "0") ids.push_back(kv.first);
+            } else if (tgt.rfind("group:", 0) == 0) {
+                const std::string gname = tgt.substr(6);
+                for (auto& m : data["groups"][gname].a) ids.push_back(m.asStr());
+            } else {
+                ids.push_back(tgt);
+            }
+        }
+        for (auto& sid : ids) {
+            if (sid == "0" || scores[sid].t == js::Value::NUL) continue;
+            double oldScore = scoreOf(scores, sid);
+            double newScore = oldScore + e["change"].n;
+            setScore(data.o["scores"], sid, newScore);
+            addLog(data, "自动事件", sid, nameOf(scores, sid), e["change"].n, newScore,
+                   e["reason"].asStr().empty() ? "自动事件" : e["reason"].asStr(), "autoEvents");
+            std::printf("  %s %+0.1f → %.1f\n", sid.c_str(), e["change"].n, newScore);
+            ++applied;
+        }
+        js::Value lastRun = e["lastRun"];
+        if (!lastRun.isObj()) lastRun = js::Value::obj();
+        lastRun.set(today, js::Value::boolean(true));
+        e.set("lastRun", lastRun);
+    }
+    data.set("autoEvents", arr);
+    saveClassData(c, data);
+    std::printf("✓ 执行完成：改动 %d 人次，跳过 %d 个已完成事件\n", applied, skipped);
+    return 0;
+}
+
 } // namespace extra

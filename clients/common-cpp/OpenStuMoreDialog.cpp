@@ -164,6 +164,33 @@ void OpenStuMoreDialog::buildUi() {
     ev->addWidget(bPay);
     m_tabs->addTab(extraPage, QStringLiteral("其它"));
 
+    // ---------- 自动事件 ----------
+    auto* evPage = new QWidget(this);
+    auto* evv = new QVBoxLayout(evPage);
+    m_events = new QPlainTextEdit(evPage);
+    m_events->setReadOnly(true);
+    evv->addWidget(m_events, 1);
+    auto* bRun = new QPushButton(QStringLiteral("▶ 立即执行到期事件"), evPage);
+    connect(bRun, &QPushButton::clicked, this, &OpenStuMoreDialog::runEvents);
+    evv->addWidget(bRun);
+    auto* evForm = new QFormLayout();
+    m_evName = new QLineEdit(QStringLiteral("每周一加分"), evPage);
+    m_evFreq = new QLineEdit(QStringLiteral("weekly:1"), evPage);
+    m_evTargets = new QLineEdit(QStringLiteral("all"), evPage);
+    m_evChange = new QDoubleSpinBox(evPage);
+    m_evChange->setRange(-100, 100); m_evChange->setValue(1);
+    m_evReason = new QLineEdit(evPage);
+    evForm->addRow(QStringLiteral("名称"), m_evName);
+    evForm->addRow(QStringLiteral("频率 daily / weekly:1 / monthly:15"), m_evFreq);
+    evForm->addRow(QStringLiteral("目标 all / group:组名 / 学号"), m_evTargets);
+    evForm->addRow(QStringLiteral("分值"), m_evChange);
+    evForm->addRow(QStringLiteral("原因"), m_evReason);
+    evv->addLayout(evForm);
+    auto* bEvAdd = new QPushButton(QStringLiteral("添加事件"), evPage);
+    connect(bEvAdd, &QPushButton::clicked, this, &OpenStuMoreDialog::addEvent);
+    evv->addWidget(bEvAdd);
+    m_tabs->addTab(evPage, QStringLiteral("自动事件"));
+
     // 名册下拉
     const QJsonObject students = m_roster.value("students").toObject();
     QStringList ids = students.keys();
@@ -261,6 +288,25 @@ void OpenStuMoreDialog::fillTable() {
                      m_api->hasConfig() ? QStringLiteral("已设置") : QStringLiteral("未设置"));
     extra << QStringLiteral("账号权限（root/admin/user）由网页端角色决定，桌面端只按班级密码鉴权。");
     m_extra->setPlainText(extra.join('\n'));
+
+    // 自动事件列表
+    QStringList evLines;
+    const QJsonArray events = m_data.value("autoEvents").toArray();
+    for (int i = 0; i < events.size(); ++i) {
+        const QJsonObject e = events.at(i).toObject();
+        const QString freq = e.value("frequency").toString(QStringLiteral("daily"));
+        QString when;
+        if (freq == QLatin1String("weekly")) when = QStringLiteral("周%1").arg(e.value("dayOfWeek").toInt());
+        else if (freq == QLatin1String("monthly")) when = QStringLiteral("%1 日").arg(e.value("dayOfMonth").toInt());
+        QStringList targets;
+        for (const QJsonValue& t : e.value("targets").toArray()) targets << t.toString();
+        evLines << QStringLiteral("[%1] %2  %3 %4  %+5  %6\n     目标: %7")
+                        .arg(i).arg(e.value("name").toString())
+                        .arg(freq, when, QString::number(e.value("change").toDouble(), 'f', 1))
+                        .arg(e.value("reason").toString())
+                        .arg(targets.join(QStringLiteral(", ")));
+    }
+    m_events->setPlainText(evLines.isEmpty() ? QStringLiteral("（还没有自动事件）") : evLines.join('\n'));
 }
 
 QString OpenStuMoreDialog::sidOf(int row) const {
@@ -459,6 +505,100 @@ void OpenStuMoreDialog::draw(int times) {
 
     m_api->saveClassData(m_data);
     m_msg->setText(lines.join('\n') + QStringLiteral("\n金币 %1 → %2 · 学分 %3").arg(have).arg(have - cost).arg(score));
+}
+
+void OpenStuMoreDialog::runEvents() {
+    QJsonArray events = m_data.value("autoEvents").toArray();
+    if (events.isEmpty()) { m_msg->setText(QStringLiteral("（还没有自动事件）")); return; }
+    const QDate today = QDate::currentDate();
+    const QString key = today.toString("yyyy-MM-dd");
+    QJsonObject scores = m_data.value("scores").toObject();
+    const QJsonObject groups = m_data.value("groups").toObject();
+    int applied = 0;
+
+    for (int i = 0; i < events.size(); ++i) {
+        QJsonObject e = events.at(i).toObject();
+        const QString freq = e.value("frequency").toString(QStringLiteral("daily"));
+        bool due = false;
+        if (freq == QLatin1String("daily")) due = true;
+        else if (freq == QLatin1String("weekly")) due = (today.dayOfWeek() % 7) == e.value("dayOfWeek").toInt(1);
+        else if (freq == QLatin1String("monthly")) due = today.day() == e.value("dayOfMonth").toInt(1);
+        if (!due) continue;
+        QJsonObject lastRun = e.value("lastRun").toObject();
+        if (lastRun.value(key).toBool()) continue;
+
+        QStringList ids;
+        for (const QJsonValue& t : e.value("targets").toArray()) {
+            const QString tg = t.toString();
+            if (tg == QLatin1String("all")) ids << scores.keys();
+            else if (tg.startsWith(QStringLiteral("group:"))) {
+                for (const QJsonValue& m : groups.value(tg.mid(6)).toArray()) ids << m.toString();
+            } else ids << tg;
+        }
+        ids.removeDuplicates();
+        const double change = e.value("change").toDouble();
+        for (const QString& sid : ids) {
+            if (sid == QLatin1String("0") || !scores.contains(sid)) continue;
+            QJsonValue row = scores.value(sid);
+            QString name = QStringLiteral("学号") + sid;
+            double newScore = 0;
+            if (row.isArray()) {
+                QJsonArray a = row.toArray();
+                name = a.at(0).toString(name);
+                newScore = a.at(1).toDouble() + change;
+                a.replace(1, newScore);
+                scores[sid] = a;
+            } else {
+                QJsonObject o = row.toObject();
+                name = o.value("name").toString(name);
+                newScore = o.value("score").toDouble() + change;
+                o["score"] = newScore;
+                scores[sid] = o;
+            }
+            QJsonArray logs = m_data.value("logs").toArray();
+            logs.insert(0, QJsonObject{
+                {"timestamp", QDateTime::currentDateTime().toString("yyyy/MM/dd HH:mm:ss")},
+                {"action", QStringLiteral("自动事件")}, {"student_id", sid}, {"student_name", name},
+                {"score_change", change}, {"current_score", newScore},
+                {"reason", e.value("reason").toString(QStringLiteral("自动事件"))},
+                {"page", QStringLiteral("qt")}, {"user_role", QStringLiteral("system")}
+            });
+            while (logs.size() > 2000) logs.removeLast();
+            m_data["logs"] = logs;
+            ++applied;
+        }
+        lastRun[key] = true;
+        e["lastRun"] = lastRun;
+        events.replace(i, e);
+    }
+    m_data["scores"] = scores;
+    m_data["autoEvents"] = events;
+    m_api->saveClassData(m_data);
+    m_msg->setText(QStringLiteral("✓ 执行完成：改动 %1 人次").arg(applied));
+}
+
+void OpenStuMoreDialog::addEvent() {
+    const QString name = m_evName->text().trimmed();
+    if (name.isEmpty()) { m_msg->setText(QStringLiteral("名称不能空")); return; }
+    const QStringList parts = m_evFreq->text().split(':');
+    QJsonObject e{
+        {"name", name}, {"frequency", parts.value(0)},
+        {"change", m_evChange->value()},
+        {"reason", m_evReason->text().trimmed().isEmpty() ? QStringLiteral("自动事件") : m_evReason->text().trimmed()},
+        {"lastRun", QJsonObject()}
+    };
+    if (parts.value(0) == QLatin1String("weekly")) e["dayOfWeek"] = parts.value(1).toInt();
+    if (parts.value(0) == QLatin1String("monthly")) e["dayOfMonth"] = parts.value(1).toInt();
+    QJsonArray targets;
+    for (const QString& t : m_evTargets->text().split(',', Qt::SkipEmptyParts))
+        if (!t.trimmed().isEmpty()) targets.append(t.trimmed());
+    if (targets.isEmpty()) { m_msg->setText(QStringLiteral("目标不能空")); return; }
+    e["targets"] = targets;
+    QJsonArray events = m_data.value("autoEvents").toArray();
+    events.append(e);
+    m_data["autoEvents"] = events;
+    m_api->saveClassData(m_data);
+    m_msg->setText(QStringLiteral("✓ 已添加「%1」").arg(name));
 }
 
 void OpenStuMoreDialog::paySalaries() {

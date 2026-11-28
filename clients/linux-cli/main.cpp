@@ -285,6 +285,11 @@ static void usage() {
         "  openstu-cli report                                            今日汇报状态\n"
         "  openstu-cli backup openstu-backup.json                        导出整班 JSON\n"
         "  openstu-cli account                                           显示服务器/班级/账号\n\n"
+        "  自动事件（对应网页 autoEvents）\n"
+        "  openstu-cli events                                            事件列表\n"
+        "  openstu-cli event-add \"每周一加分\" --freq weekly:1 --targets all --change +1\n"
+        "  openstu-cli event-run                                         执行到期的活动\n"
+        "  openstu-cli event-del 0                                       删除第 0 个\n\n"
         "选项:\n"
         "  --subject 用索引（0 起），也可 --subject-name 语文\n"
         "  --type    作业种类索引（配了种类才有意义）\n"
@@ -342,6 +347,7 @@ int main(int argc, char** argv) {
         const bool needCfg = cmd == "status" || cmd == "list" || cmd == "submit" || cmd == "watch" ||
             cmd == "positions" || cmd == "position-add" || cmd == "position-join" || cmd == "pay" ||
             cmd == "exam" || cmd == "exam-add" || cmd == "report" || cmd == "backup" || cmd == "account" ||
+            cmd == "events" || cmd == "event-add" || cmd == "event-del" || cmd == "event-run" ||
                              cmd == "classinfo" || cmd == "scores" || cmd == "score" || cmd == "gold" ||
                              cmd == "gacha" || cmd == "journal" || cmd == "journal-add" || cmd == "journal-export" ||
                              cmd == "logs" || cmd == "groups" || cmd == "types" || cmd == "init" ||
@@ -533,6 +539,24 @@ int main(int argc, char** argv) {
             return extra::cmdBackup(c, pos.empty() ? "openstu-backup.json" : pos[0]);
         }
         if (cmd == "account") return extra::cmdAccount(c);
+        if (cmd == "events") return extra::cmdEvents(c);
+        if (cmd == "event-add") {
+            std::vector<std::string> pos;
+            auto f = parseFlags(argc, argv, pos);
+            if (pos.empty()) die("用法: event-add \"每周一加分\" --freq weekly:1 --targets all --change +1 [--reason 理由]");
+            return extra::cmdEventAdd(c, pos[0], f.count("freq") ? f["freq"] : "daily",
+                                      f.count("targets") ? f["targets"] : "all",
+                                       f.count("change") ? atof(f["change"].c_str()) : 1.0,
+                                      f.count("reason") ? f["reason"] : "");
+        }
+        if (cmd == "event-del") {
+            std::vector<std::string> pos;
+            parseFlags(argc, argv, pos);
+            if (pos.empty()) die("用法: event-del 0");
+            return extra::cmdEventDel(c, atoi(pos[0].c_str()));
+        }
+        if (cmd == "event-run") return extra::cmdEventRun(c);
+
 
 
         usage();

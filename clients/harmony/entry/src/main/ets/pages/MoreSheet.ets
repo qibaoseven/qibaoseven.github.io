@@ -16,6 +16,7 @@ export struct MoreSheet {
   @State metaTypes: string[] = [];
   @State metaNames: string[] = [];
   @State extra: string[] = [];
+  @State eventLines: string[] = [];
   @State sid: string = '';
   @State delta: string = '+2';
   @State reason: string = '';
@@ -50,6 +51,7 @@ export struct MoreSheet {
       this.metaTypes = t;
       this.metaNames = n;
       this.extra = ClassApi.extraLines(json);
+      this.eventLines = ClassApi.eventLines(json);
     } catch (e) {
       this.msg = '读取失败：' + (e as Error).message;
     }
@@ -76,6 +78,17 @@ export struct MoreSheet {
       await this.reload();
     } catch (e) {
       this.msg = '失败：' + (e as Error).message;
+    }
+    this.busy = false;
+  }
+
+  async doRunEvents(): Promise<void> {
+    this.busy = true;
+    try {
+      this.msg = await ClassApi.runAutoEvents();
+      await this.reload();
+    } catch (e) {
+      this.msg = '执行失败：' + (e as Error).message;
     }
     this.busy = false;
   }
@@ -124,7 +137,7 @@ export struct MoreSheet {
   @Builder
   tabBar() {
     Row({ space: 6 }) {
-      ForEach(['分数', '金币', '日志', '初始化', '历程', '其它'], (label: string, i: number) => {
+      ForEach(['分数', '金币', '日志', '初始化', '历程', '其它', '自动'], (label: string, i: number) => {
         Button(label)
           .fontSize(12)
           .backgroundColor(this.tab === i ? '#3478f6' : '#f2f2f2')
@@ -207,6 +220,16 @@ export struct MoreSheet {
             ForEach(this.metaTypes, (t: string) => {
               Text(t).fontSize(11).fontColor('#555555')
             }, (t: string, i: number) => `${i}-${t}`)
+          }
+
+          if (this.tab === 6) {
+            Text('自动事件（规则同网页：daily / weekly / monthly，同一天只跑一次）')
+              .fontSize(11).fontColor('#888888').width('100%')
+            ForEach(this.eventLines, (l: string) => {
+              Text(l).fontSize(11).fontColor('#555555').width('100%').padding(6)
+                .backgroundColor(Color.White).borderRadius(6)
+            }, (l: string, i: number) => `${i}-${l}`)
+            Button('▶ 立即执行到期事件').fontSize(13).onClick(() => { this.doRunEvents(); })
           }
 
           if (this.tab === 5) {

@@ -3,6 +3,9 @@
 #include <QDialog>
 #include <QJsonObject>
 
+class QPlainTextEdit;
+class QDoubleSpinBox;
+
 class OpenStuApi;
 class QTabWidget;
 class QTableWidget;
@@ -30,6 +33,8 @@ private slots:
     void readJournal();
     void appendJournal();
     void paySalaries();
+    void runEvents();
+    void addEvent();
 
 private:
     void buildUi();
@@ -61,4 +66,11 @@ private:
     QLineEdit* m_journalInput = nullptr;
     // 其它（职位/考试/汇报/备份/账号）
     QPlainTextEdit* m_extra = nullptr;
+    // 自动事件
+    QPlainTextEdit* m_events = nullptr;
+    QLineEdit* m_evName = nullptr;
+    QLineEdit* m_evFreq = nullptr;
+    QLineEdit* m_evTargets = nullptr;
+    QDoubleSpinBox* m_evChange = nullptr;
+    QLineEdit* m_evReason = nullptr;
 };
