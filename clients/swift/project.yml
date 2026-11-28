@@ -39,6 +39,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.qibaoseven.openstu.mac
         PRODUCT_NAME: OpenStu
+        GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_NSHumanReadableCopyright: "© 2026 qibaoseven"
 
   OpenStuTV:

@@ -258,7 +258,7 @@ fun MainScreen(store: Store, vm: MainViewModel, onConfig: () -> Unit, onDevice: 
                 Column {
                     Text("选择要标记为已交的科目：")
                     Spacer(Modifier.height(8.dp))
-                    req?.subjects?.forEach { s: Int ->
+                    state.required?.subjects?.forEach { s: Int ->
                         val already = state.marks[t.id]?.get(s) == true
                         OutlinedButton(
                             onClick = { target = null; vm.submit(store, t, s) },

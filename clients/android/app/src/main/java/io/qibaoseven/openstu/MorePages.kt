@@ -578,7 +578,8 @@ private fun PositionsPanel(store: Store, vm: MoreViewModel) {
                 val n = keys.next()
                 val item = list.optJSONObject(n) ?: continue
                 val members = item.optJSONArray("members") ?: JSONArray()
-                val names = (0 until members.length()).map { sid ->
+                val names = (0 until members.length()).map { i ->
+                    val sid = members.optString(i)
                     val r = scores?.opt(sid)
                     sid + " " + if (r is JSONArray) r.optString(0) else ""
                 }
