@@ -203,6 +203,90 @@ object Api {
         }
     }
 
+
+    // ---------- 班级数据（分数/金币/日志/分组/汇率） ----------
+    fun classData(): Result<JSONObject> = when (val r = open("/api/class/$classId", "GET", null)) {
+        is Result.Err -> r
+        is Result.Ok -> {
+            val (code, body) = r.value
+            if (code !in 200..299) Result.Err(errorText(code, body), code)
+            else try { Result.Ok(JSONObject(body).getJSONObject("data")) }
+            catch (e: Exception) { Result.Err("班级数据解析失败: ${e.message}") }
+        }
+    }
+
+    fun saveClassData(data: JSONObject): Result<JSONObject> {
+        val body = JSONObject().put("data", data)
+        return when (val r = open("/api/class/$classId", "POST", body.toString())) {
+            is Result.Err -> r
+            is Result.Ok -> {
+                val (code, text) = r.value
+                if (code !in 200..299) Result.Err(errorText(code, text), code) else Result.Ok(JSONObject(text))
+            }
+        }
+    }
+
+    fun meta(): Result<JSONObject> = when (val r = open("/api/class/$classId/homework/meta", "GET", null)) {
+        is Result.Err -> r
+        is Result.Ok -> {
+            val (code, body) = r.value
+            if (code !in 200..299) Result.Err(errorText(code, body), code) else Result.Ok(JSONObject(body))
+        }
+    }
+
+    fun initHomework(studentCount: Int, subjectNames: List<String>): Result<JSONObject> {
+        val names = JSONObject()
+        subjectNames.forEachIndexed { i, n -> names.put(i.toString(), n) }
+        val body = JSONObject()
+            .put("student_count", studentCount)
+            .put("subject_count", subjectNames.size)
+            .put("subject_names", names)
+        return when (val r = open("/api/class/$classId/homework/init", "POST", body.toString())) {
+            is Result.Err -> r
+            is Result.Ok -> {
+                val (code, text) = r.value
+                if (code !in 200..299) Result.Err(errorText(code, text), code) else Result.Ok(JSONObject(text))
+            }
+        }
+    }
+
+    // ---------- 学生历程 ----------
+    fun journal(studentId: Int): Result<String> = when (val r = open("/api/class/$classId/journal/$studentId", "GET", null, auth = false)) {
+        is Result.Err -> r
+        is Result.Ok -> {
+            val (code, body) = r.value
+            if (code !in 200..299) Result.Err(errorText(code, body), code)
+            else try { Result.Ok(JSONObject(body).optString("journal")) }
+            catch (e: Exception) { Result.Err("历程解析失败: ${e.message}") }
+        }
+    }
+
+    fun journalAdd(studentId: Int, content: String, operator: String?): Result<Unit> {
+        val body = JSONObject().put("student_id", studentId.toString()).put("content", content)
+        if (!operator.isNullOrBlank()) {
+            body.put("operator_name", operator)
+            body.put("operator_role", "admin")
+        }
+        return when (val r = open("/api/class/$classId/journal", "POST", body.toString(), auth = false)) {
+            is Result.Err -> r
+            is Result.Ok -> {
+                val (code, text) = r.value
+                if (code !in 200..299) Result.Err(errorText(code, text), code) else Result.Ok(Unit)
+            }
+        }
+    }
+
+    // ---------- UID 字典 ----------
+    fun uuids(): Result<JSONObject> = when (val r = open("/api/class/$classId/uuids", "GET", null)) {
+        is Result.Err -> r
+        is Result.Ok -> {
+            val (code, body) = r.value
+            if (code !in 200..299) Result.Err(errorText(code, body), code)
+            else try { Result.Ok(JSONObject(body).optJSONObject("uuids") ?: JSONObject()) }
+            catch (e: Exception) { Result.Err("UID 字典解析失败: ${e.message}") }
+        }
+    }
+
     fun submit(studentId: Int, subjectId: Int, date: String, typeId: Int? = null): Result<JSONObject> {
         val body = JSONObject().apply {
             put("student_id", studentId)

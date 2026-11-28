@@ -16,6 +16,7 @@ class MainActivity : ComponentActivity() {
             var page by remember { mutableStateOf(if (store.configured) 1 else 0) }
             val vm: MainViewModel = viewModel()
             val deviceVm: DeviceViewModel = viewModel()
+            val moreVm: MoreViewModel = viewModel()
 
             MaterialTheme {
                 Surface {
@@ -30,7 +31,9 @@ class MainActivity : ComponentActivity() {
                             date = vm.state.required?.date ?: java.time.LocalDate.now().toString(),
                             onBack = { page = 1 },
                         )
-                        else -> MainScreen(store, vm, onConfig = { page = 0 }, onDevice = { page = 2 })
+                        3 -> MoreScreen(store, moreVm, vm.state.roster, onBack = { page = 1 })
+                        else -> MainScreen(store, vm, onConfig = { page = 0 }, onDevice = { page = 2 },
+                            onMore = { page = 3; moreVm.load(store) })
                     }
                 }
             }

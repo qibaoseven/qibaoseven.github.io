@@ -177,7 +177,7 @@ fun ConfigScreen(store: Store, onDone: () -> Unit) {
 }
 
 @Composable
-fun MainScreen(store: Store, vm: MainViewModel, onConfig: () -> Unit, onDevice: () -> Unit = {}) {
+fun MainScreen(store: Store, vm: MainViewModel, onConfig: () -> Unit, onDevice: () -> Unit = {}, onMore: () -> Unit = {}) {
     val state = vm.state
     LaunchedEffect(Unit) { vm.refresh(store) }
 
@@ -190,6 +190,7 @@ fun MainScreen(store: Store, vm: MainViewModel, onConfig: () -> Unit, onDevice: 
                 Text(state.required?.let { "${it.date} · 应交 ${it.subjects.size} 科" } ?: "未加载",
                     style = MaterialTheme.typography.bodySmall)
             }
+            TextButton(onClick = onMore) { Text("更多") }
             TextButton(onClick = onDevice) { Text("设备") }
             TextButton(onClick = onConfig) { Text("设置") }
             Button(onClick = { vm.refresh(store) }, enabled = !state.loading) { Text("刷新") }
