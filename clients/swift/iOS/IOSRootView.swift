@@ -10,7 +10,7 @@ struct IOSRootView: View {
     @State private var showMore = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Group {
                 if model.configured { studentList } else { onboarding }
             }

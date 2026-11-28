@@ -265,7 +265,7 @@ struct MoreView: View {
     ]
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 if let m = store.message {
                     Text(m).font(.caption).foregroundStyle(.secondary)
