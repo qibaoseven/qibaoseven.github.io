@@ -32,6 +32,7 @@ export struct MoreSheet {
   @State uidSid: string = '';
   @State uidHex: string = '';
   @State uidLines: string[] = [];
+  @State logFilter: string = '';
 
   aboutToAppear(): void {
     this.reload();
@@ -255,10 +256,12 @@ export struct MoreSheet {
           }
 
           if (this.tab === 2) {
+            TextInput({ placeholder: '筛选：学生 / 操作 / 原因', text: this.logFilter })
+              .onChange((v: string) => { this.logFilter = v; })
             if (this.logs.length === 0) {
               Text('（暂无日志）').fontSize(12).fontColor('#888888')
             }
-            ForEach(this.logs, (l: string) => {
+            ForEach(this.logFilter.length > 0 ? this.logs.filter((x: string) => x.indexOf(this.logFilter) >= 0) : this.logs, (l: string) => {
               Text(l).fontSize(11).fontColor('#555555').width('100%')
                 .padding(6).backgroundColor(Color.White).borderRadius(6)
             }, (l: string, i: number) => `${i}-${l}`)
