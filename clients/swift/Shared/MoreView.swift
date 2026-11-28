@@ -162,6 +162,32 @@ final class MoreStore: ObservableObject {
         message = lines.joined(separator: "\n") + "\n金币 \(have) → \(have - cost)·学分 \(score)"
     }
 
+    func paySalaries() async {
+        var d = data
+        guard let pos = d["positions"] as? [String: Any],
+              let list = pos["list"] as? [String: Any], !list.isEmpty else { message = "（还没有职位）"; return }
+        var golds = d["gold"] as? [String: Any] ?? [:]
+        var total = 0.0, people = 0
+        for (_, v) in list {
+            guard let item = v as? [String: Any] else { continue }
+            let salary = (item["salary"] as? NSNumber)?.doubleValue ?? 0
+            for m in (item["members"] as? [Any]) ?? [] {
+                let sid = "\(m)"
+                var e = golds[sid] as? [String: Any] ?? ["amount": 0.0]
+                e["amount"] = ((e["amount"] as? NSNumber)?.doubleValue ?? 0) + salary
+                golds[sid] = e
+                total += salary; people += 1
+            }
+        }
+        d["gold"] = golds
+        var p2 = pos
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        p2["lastPayDate"] = f.string(from: Date())
+        d["positions"] = p2
+        await save(d)
+        message = "✓ 发放 \(people) 人次，共 \(total) 金币"
+    }
+
     func initHomework(students: Int, subjects: [String]) async {
         let a = ApiClient()
         await a.configure(cfg.server, cfg.classId, cfg.password)
@@ -231,6 +257,11 @@ struct MoreView: View {
         ("logs", "📋 操作日志"),
         ("groups", "👥 分组"),
         ("init", "📚 作业初始化 / 种类"),
+        ("positions", "👔 职位 / 工资"),
+        ("exam", "📝 考试分数"),
+        ("report", "📋 每日汇报"),
+        ("backup", "💾 数据备份"),
+        ("account", "🔑 账号 / 连接"),
     ]
 
     var body: some View {
@@ -258,6 +289,11 @@ struct MoreView: View {
         case "journal": JournalPage(store: store, roster: model.roster?.sorted ?? [])
         case "logs": LogsPage(store: store)
         case "groups": GroupsPage(store: store)
+        case "positions": PositionsPage(store: store)
+        case "exam": ExamPage(store: store)
+        case "report": ReportPage(store: store)
+        case "backup": BackupPage(store: store)
+        case "account": AccountPage(model: model)
         default: InitPage(store: store)
         }
     }
@@ -477,5 +513,135 @@ struct InitPage: View {
             if let m = store.message { Section { Text(m).font(.caption) } }
         }
         .navigationTitle("作业初始化")
+    }
+}
+
+
+// MARK: - 职位 / 考试 / 汇报 / 备份 / 账号
+
+struct PositionsPage: View {
+    @ObservedObject var store: MoreStore
+
+    var body: some View {
+        List {
+            let pos = store.data["positions"] as? [String: Any] ?? [:]
+            let list = pos["list"] as? [String: Any] ?? [:]
+            if list.isEmpty { Text("（还没有职位）") }
+            ForEach(Array(list.keys.sorted().enumerated()), id: \.offset) { _, name in
+                let item = list[name] as? [String: Any] ?? [:]
+                let members = (item["members"] as? [Any]) ?? []
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text(name).bold()
+                        Spacer()
+                        Text("月薪 \(Int((item["salary"] as? NSNumber)?.doubleValue ?? 0))")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text(members.isEmpty ? "（空缺）" : members.map { "\($0)" }.joined(separator: "、"))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Section {
+                Text("上次发薪: \(pos["lastPayDate"] as? String ?? "从未")")
+                    .font(.caption)
+                Button("给所有班干发工资（进金币）") { Task { await store.paySalaries() } }
+            }
+            if let m = store.message { Section { Text(m).font(.caption) } }
+        }
+        .navigationTitle("职位")
+    }
+}
+
+struct ExamPage: View {
+    @ObservedObject var store: MoreStore
+
+    var body: some View {
+        List {
+            let exams = store.data["examScores"] as? [String: Any] ?? [:]
+            let scores = store.data["scores"] as? [String: Any] ?? [:]
+            if exams.isEmpty { Text("（还没有考试记录）") }
+            ForEach(Array(exams.keys.sorted().enumerated()), id: \.offset) { _, sid in
+                let rows = exams[sid] as? [[String: Any]] ?? []
+                var name = "学号\(sid)"
+                if let arr = scores[sid] as? [Any], !arr.isEmpty { name = arr[0] as? String ?? name }
+                Section("学号 \(sid) \(name)") {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, e in
+                        let sc = (e["score"] as? NSNumber)?.doubleValue ?? 0
+                        let full = (e["full"] as? NSNumber)?.doubleValue ?? 0
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(e["subject"] as? String ?? "") · \(e["name"] as? String ?? "")")
+                                Text(e["date"] as? String ?? "").font(.caption2).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(String(format: "%.0f/%.0f (%.0f%%)", sc, full, full > 0 ? sc / full * 100 : 0))
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("考试分数")
+    }
+}
+
+struct ReportPage: View {
+    @ObservedObject var store: MoreStore
+
+    var body: some View {
+        List {
+            let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+            let today = f.string(from: Date())
+            let dr = (store.data["dailyReport"] as? [String: Any])?[today] as? [String: Any]
+            Section("今日汇报 \(today)") {
+                Text((dr?["allReported"] as? Bool ?? false) ? "✅ 已全部汇报" : "⭕ 未完成")
+                Text("最后汇报: \(dr?["lastReportTime"] as? String ?? "-")").font(.caption)
+            }
+            Section("概况") {
+                let rows = scoreRows(store.data)
+                Text("全班 \(rows.count) 人").font(.caption)
+                let avg = rows.isEmpty ? 0 : rows.reduce(0) { $0 + $1.score } / Double(rows.count)
+                Text(String(format: "平均分 %.1f", avg)).font(.caption)
+            }
+            Text("汇报的登记与批量加分是管理员权限，移动端先给只读视图。").font(.caption2)
+        }
+        .navigationTitle("每日汇报")
+    }
+}
+
+struct BackupPage: View {
+    @ObservedObject var store: MoreStore
+    @State private var done = false
+
+    var body: some View {
+        List {
+            let json: String = {
+                guard JSONSerialization.isValidJSONObject(store.data),
+                      let d = try? JSONSerialization.data(withJSONObject: store.data, options: [.prettyPrinted]) else { return "" }
+                return String(data: d, encoding: .utf8) ?? ""
+            }()
+            Section("整班数据 \(json.count) 字节") {
+                Text("和网页「导出数据」一样，就是 /api/class/{id} 的 data 原样。").font(.caption)
+                ShareLink(item: json) { Label("导出 / 分享 JSON", systemImage: "square.and.arrow.up") }
+                    .disabled(json.isEmpty)
+            }
+            Section { Text(json.prefix(800) + (json.count > 800 ? "…" : "")).font(.caption2) }
+        }
+        .navigationTitle("数据备份")
+    }
+}
+
+struct AccountPage: View {
+    let model: AppModel
+
+    var body: some View {
+        List {
+            LabeledContent("服务器", value: model.server)
+            LabeledContent("班级", value: model.classId)
+            LabeledContent("密码", value: model.password.isEmpty ? "未设置" : "已设置")
+            Section {
+                Text("账号权限（root/admin/user）由网页端角色决定，原生端只按班级密码鉴权。").font(.caption)
+            }
+        }
+        .navigationTitle("账号")
     }
 }

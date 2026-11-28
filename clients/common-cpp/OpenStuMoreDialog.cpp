@@ -18,6 +18,7 @@
 #include <QTime>
 #include <QDateTime>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QRandomGenerator>
 
 OpenStuMoreDialog::OpenStuMoreDialog(OpenStuApi* api, const QJsonObject& roster, QWidget* parent)
@@ -152,6 +153,17 @@ void OpenStuMoreDialog::buildUi() {
     jv->addWidget(bAdd);
     m_tabs->addTab(jPage, QStringLiteral("学生历程"));
 
+    // ---------- 其它：职位 / 考试 / 汇报 / 备份 / 账号 ----------
+    auto* extraPage = new QWidget(this);
+    auto* ev = new QVBoxLayout(extraPage);
+    m_extra = new QPlainTextEdit(extraPage);
+    m_extra->setReadOnly(true);
+    ev->addWidget(m_extra, 1);
+    auto* bPay = new QPushButton(QStringLiteral("给所有班干发工资（进金币）"), extraPage);
+    connect(bPay, &QPushButton::clicked, this, &OpenStuMoreDialog::paySalaries);
+    ev->addWidget(bPay);
+    m_tabs->addTab(extraPage, QStringLiteral("其它"));
+
     // 名册下拉
     const QJsonObject students = m_roster.value("students").toObject();
     QStringList ids = students.keys();
@@ -213,6 +225,42 @@ void OpenStuMoreDialog::fillTable() {
                  .arg(l.value("reason").toString());
     }
     m_logs->setPlainText(lines.isEmpty() ? QStringLiteral("（暂无日志）") : lines.join('\n'));
+
+    // 其它页：职位 / 考试 / 汇报 / 备份 / 账号
+    QStringList extra;
+    const QJsonObject pos = m_data.value("positions").toObject();
+    const QJsonObject list = pos.value("list").toObject();
+    for (const QString& name : list.keys()) {
+        const QJsonObject item = list.value(name).toObject();
+        QStringList members;
+        for (const QJsonValue& m : item.value("members").toArray()) members << m.toString();
+        extra << QStringLiteral("👔 %1  月薪 %2 · %3")
+                    .arg(name).arg(item.value("salary").toDouble())
+                    .arg(members.isEmpty() ? QStringLiteral("（空缺）") : members.join(QStringLiteral("、")));
+    }
+    extra << QStringLiteral("上次发薪: %1").arg(pos.value("lastPayDate").toString(QStringLiteral("从未")));
+    const QJsonObject exams = m_data.value("examScores").toObject();
+    for (const QString& sid : exams.keys()) {
+        for (const QJsonValue& v : exams.value(sid).toArray()) {
+            const QJsonObject e = v.toObject();
+            extra << QStringLiteral("📝 %1 %2 %3 %4/%5")
+                        .arg(sid, e.value("subject").toString(), e.value("name").toString())
+                        .arg(e.value("score").toDouble()).arg(e.value("full").toDouble());
+        }
+    }
+    const QJsonObject dr = m_data.value("dailyReport").toObject();
+    for (const QString& day : dr.keys()) {
+        const QJsonObject o = dr.value(day).toObject();
+        extra << QStringLiteral("📋 %1 汇报: %2").arg(day)
+                    .arg(o.value("allReported").toBool() ? QStringLiteral("✅ 已全部汇报") : QStringLiteral("⭕ 未完成"));
+    }
+    extra << QStringLiteral("💾 整班数据 %1 字节（备份=原样导出这段 JSON）")
+                .arg(QJsonDocument(m_data).toJson(QJsonDocument::Compact).size());
+    extra << QStringLiteral("🔑 服务器 %1 · 班级 %2 · 密码 %3")
+                .arg(m_api->server(), m_api->classId(),
+                     m_api->hasConfig() ? QStringLiteral("已设置") : QStringLiteral("未设置"));
+    extra << QStringLiteral("账号权限（root/admin/user）由网页端角色决定，桌面端只按班级密码鉴权。");
+    m_extra->setPlainText(extra.join('\n'));
 }
 
 QString OpenStuMoreDialog::sidOf(int row) const {
@@ -411,6 +459,31 @@ void OpenStuMoreDialog::draw(int times) {
 
     m_api->saveClassData(m_data);
     m_msg->setText(lines.join('\n') + QStringLiteral("\n金币 %1 → %2 · 学分 %3").arg(have).arg(have - cost).arg(score));
+}
+
+void OpenStuMoreDialog::paySalaries() {
+    const QJsonObject pos = m_data.value("positions").toObject();
+    const QJsonObject list = pos.value("list").toObject();
+    if (list.isEmpty()) { m_msg->setText(QStringLiteral("（还没有职位）")); return; }
+    QJsonObject golds = m_data.value("gold").toObject();
+    double total = 0; int people = 0;
+    for (const QString& name : list.keys()) {
+        const QJsonObject item = list.value(name).toObject();
+        const double salary = item.value("salary").toDouble();
+        for (const QJsonValue& m : item.value("members").toArray()) {
+            const QString sid = m.toString();
+            QJsonObject e = golds.value(sid).toObject();
+            e["amount"] = e.value("amount").toDouble() + salary;
+            golds[sid] = e;
+            total += salary; ++people;
+        }
+    }
+    m_data["gold"] = golds;
+    QJsonObject p2 = pos;
+    p2["lastPayDate"] = QDate::currentDate().toString("yyyy-MM-dd");
+    m_data["positions"] = p2;
+    m_api->saveClassData(m_data);
+    m_msg->setText(QStringLiteral("✓ 发放 %1 人次，共 %2 金币").arg(people).arg(total));
 }
 
 void OpenStuMoreDialog::runInit() {

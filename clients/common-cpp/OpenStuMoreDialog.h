@@ -29,6 +29,7 @@ private slots:
     void runInit();
     void readJournal();
     void appendJournal();
+    void paySalaries();
 
 private:
     void buildUi();
@@ -58,4 +59,6 @@ private:
     QComboBox* m_journalStudent = nullptr;
     QPlainTextEdit* m_journalText = nullptr;
     QLineEdit* m_journalInput = nullptr;
+    // 其它（职位/考试/汇报/备份/账号）
+    QPlainTextEdit* m_extra = nullptr;
 };

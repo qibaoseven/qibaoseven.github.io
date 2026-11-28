@@ -525,4 +525,53 @@ export class ClassApi {
     }
     return out;
   }
+
+  /** 职位 / 考试 / 汇报的纯文本视图（网页端对应页在移动端先给只读） */
+  static extraLines(json: string): string[] {
+    const out: string[] = [];
+    try {
+      const d = JSON.parse(json) as Record<string, Object>;
+      const pos = d['positions'] as Record<string, Object>;
+      if (pos !== undefined) {
+        const list = pos['list'] as Record<string, Object>;
+        if (list !== undefined) {
+          Object.keys(list).forEach((name) => {
+            const item = list[name] as Record<string, Object>;
+            const members = item['members'] as Object[];
+            const salary = item['salary'] !== undefined ? item['salary'] as number : 0;
+            const who = Array.isArray(members) && members.length > 0 ? members.join('、') : '（空缺）';
+            out.push(`👔 ${name}  月薪 ${salary} · ${who}`);
+          });
+        }
+        out.push('上次发薪: ' + (pos['lastPayDate'] !== undefined ? pos['lastPayDate'] as string : '从未'));
+      }
+      const exams = d['examScores'] as Record<string, Object>;
+      if (exams !== undefined) {
+        Object.keys(exams).forEach((sid) => {
+          const arr = exams[sid] as Object[];
+          if (!Array.isArray(arr)) return;
+          for (const e of arr) {
+            const o = e as Record<string, Object>;
+            const subject = o['subject'] !== undefined ? o['subject'] as string : '';
+            const name = o['name'] !== undefined ? o['name'] as string : '';
+            const sc = o['score'] !== undefined ? o['score'] as number : 0;
+            const full = o['full'] !== undefined ? o['full'] as number : 0;
+            out.push(`📝 ${sid} ${subject} ${name} ${sc}/${full}`);
+          }
+        });
+      }
+      const dr = d['dailyReport'] as Record<string, Object>;
+      if (dr !== undefined) {
+        Object.keys(dr).forEach((day) => {
+          const o = dr[day] as Record<string, Object>;
+          const done = o['allReported'] !== undefined ? o['allReported'] as boolean : false;
+          out.push(`📋 ${day} 汇报: ${done ? '✅ 已全部汇报' : '⭕ 未完成'}`);
+        });
+      }
+      out.push(`💾 整班数据 ${json.length} 字节（备份=原样导出这段 JSON）`);
+    } catch (e) {
+      out.push('数据解析失败');
+    }
+    return out;
+  }
 }

@@ -15,6 +15,7 @@ export struct MoreSheet {
   @State journalText: string = '';
   @State metaTypes: string[] = [];
   @State metaNames: string[] = [];
+  @State extra: string[] = [];
   @State sid: string = '';
   @State delta: string = '+2';
   @State reason: string = '';
@@ -48,6 +49,7 @@ export struct MoreSheet {
       }
       this.metaTypes = t;
       this.metaNames = n;
+      this.extra = ClassApi.extraLines(json);
     } catch (e) {
       this.msg = '读取失败：' + (e as Error).message;
     }
@@ -122,7 +124,7 @@ export struct MoreSheet {
   @Builder
   tabBar() {
     Row({ space: 6 }) {
-      ForEach(['分数', '金币', '日志', '初始化', '历程'], (label: string, i: number) => {
+      ForEach(['分数', '金币', '日志', '初始化', '历程', '其它'], (label: string, i: number) => {
         Button(label)
           .fontSize(12)
           .backgroundColor(this.tab === i ? '#3478f6' : '#f2f2f2')
@@ -205,6 +207,16 @@ export struct MoreSheet {
             ForEach(this.metaTypes, (t: string) => {
               Text(t).fontSize(11).fontColor('#555555')
             }, (t: string, i: number) => `${i}-${t}`)
+          }
+
+          if (this.tab === 5) {
+            Text('职位 / 考试 / 每日汇报 / 备份 / 账号（只读）').fontSize(12).fontWeight(FontWeight.Bold)
+            ForEach(this.extra, (l: string) => {
+              Text(l).fontSize(11).fontColor('#555555').width('100%').padding(6)
+                .backgroundColor(Color.White).borderRadius(6)
+            }, (l: string, i: number) => `${i}-${l}`)
+            Text('账号权限由网页端角色决定；原生端只按班级密码鉴权。')
+              .fontSize(11).fontColor('#888888').width('100%')
           }
 
           if (this.tab === 4) {

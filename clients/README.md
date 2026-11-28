@@ -90,3 +90,8 @@ open OpenStu.xcodeproj
 - 密码只保存在本机：Android 用 `SharedPreferences`、iOS 用 `UserDefaults`、桌面端用 `QSettings`、CLI 用 `~/.config/openstu-cli/config.json`（权限 0700）
 - 网络请求一律走 HTTPS；密码在传输时用 `X-Password-Hash`（SHA-256），同时按接口要求带明文 `X-Password`
 - 卡片 UID、学生姓名等敏感数据不落盘，只在内存里渲染
+
+
+## CI
+
+`.github/workflows/build-native.yml`：推 `native-clients` 时自动编译 CLI（Linux）、Qt（Linux，含 KDE 变体）、Android Debug APK、Swift（macOS 产物 + iOS 编译验证），产物统一挂到 `native-latest` Release。鸿蒙需要 DevEco/hvigor 私有工具链，公开 runner 装不了，CI 里只做提示。

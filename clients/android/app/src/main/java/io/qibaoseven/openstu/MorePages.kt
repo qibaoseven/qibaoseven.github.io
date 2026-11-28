@@ -213,6 +213,46 @@ class MoreViewModel : ViewModel() {
         }
     }
 
+    // ---------- 职位发工资 ----------
+    fun paySalaries(store: Store) {
+        val d = data ?: return
+        store.applyToApi()
+        viewModelScope.launch {
+            busy = true
+            val msg = withContext(Dispatchers.IO) {
+                try {
+                    val data = JSONObject(d.toString())
+                    val pos = data.optJSONObject("positions") ?: return@withContext "还没有职位"
+                    val list = pos.optJSONObject("list") ?: return@withContext "还没有职位"
+                    var total = 0.0; var people = 0
+                    val goldObj = data.optJSONObject("gold") ?: JSONObject().also { data.put("gold", it) }
+                    val keys = list.keys()
+                    while (keys.hasNext()) {
+                        val name = keys.next()
+                        val item = list.optJSONObject(name) ?: continue
+                        val salary = item.optDouble("salary", 0.0)
+                        val members = item.optJSONArray("members") ?: continue
+                        for (i in 0 until members.length()) {
+                            val sid = members.optString(i)
+                            val e = goldObj.optJSONObject(sid) ?: JSONObject().put("amount", 0.0).also { goldObj.put(sid, it) }
+                            e.put("amount", e.optDouble("amount", 0.0) + salary)
+                            total += salary; people++
+                        }
+                    }
+                    pos.put("lastPayDate", SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
+                    data.put("positions", pos)
+                    when (val r = Api.saveClassData(data)) {
+                        is Result.Ok -> "✓ 发放 $people 人次，共 $total 金币"
+                        is Result.Err -> "保存失败: ${r.message}"
+                    }
+                } catch (e: Exception) { "发工资失败: ${e.message}" }
+            }
+            message = msg
+            busy = false
+            load(store)
+        }
+    }
+
     // ---------- 初始化 ----------
     fun initHomework(store: Store, students: Int, subjects: List<String>) {
         store.applyToApi()
@@ -258,6 +298,11 @@ fun MoreScreen(store: Store, vm: MoreViewModel, roster: List<Student>, onBack: (
             "logs" to "📋 操作日志",
             "groups" to "👥 分组",
             "init" to "📚 作业初始化 / 种类",
+            "positions" to "👔 职位 / 工资",
+            "exam" to "📝 考试分数",
+            "report" to "📋 每日汇报",
+            "backup" to "💾 数据备份",
+            "account" to "🔑 账号 / 连接",
         )
 
         if (section == null) {
@@ -278,6 +323,11 @@ fun MoreScreen(store: Store, vm: MoreViewModel, roster: List<Student>, onBack: (
                 "logs" -> LogsPanel(vm)
                 "groups" -> GroupsPanel(vm)
                 "init" -> InitPanel(store, vm)
+                "positions" -> PositionsPanel(store, vm)
+                "exam" -> ExamPanel(vm)
+                "report" -> ReportPanel(vm)
+                "backup" -> BackupPanel(vm)
+                "account" -> AccountPanel(store)
             }
             TextButton(onClick = { section = null }) { Text("← 回到更多功能") }
         }
@@ -508,5 +558,127 @@ private fun InitPanel(store: Store, vm: MoreViewModel) {
                 HorizontalDivider()
             }
         }
+    }
+}
+
+
+// ---------- 职位 / 考试 / 汇报 / 备份 / 账号 ----------
+
+@Composable
+private fun PositionsPanel(store: Store, vm: MoreViewModel) {
+    val pos = vm.data?.optJSONObject("positions")
+    val list = pos?.optJSONObject("list")
+    Column(Modifier.verticalScroll(rememberScrollState())) {
+        if (list == null || list.length() == 0) {
+            Text("（还没有职位）", style = MaterialTheme.typography.bodySmall)
+        } else {
+            val scores = vm.data?.optJSONObject("scores")
+            val keys = list.keys()
+            while (keys.hasNext()) {
+                val n = keys.next()
+                val item = list.optJSONObject(n) ?: continue
+                val members = item.optJSONArray("members") ?: JSONArray()
+                val names = (0 until members.length()).map { sid ->
+                    val r = scores?.opt(sid)
+                    sid + " " + if (r is JSONArray) r.optString(0) else ""
+                }
+                ListItem(
+                    headlineContent = { Text(n) },
+                    supportingContent = { Text("月薪 ${item.optDouble("salary", 0.0).toInt()} · " +
+                        (if (names.isEmpty()) "（空缺）" else names.joinToString("、")),
+                        style = MaterialTheme.typography.bodySmall) }
+                )
+                HorizontalDivider()
+            }
+        }
+        Text("上次发薪: " + (pos?.optString("lastPayDate")?.ifEmpty { "从未" } ?: "从未"),
+            style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(10.dp))
+        Button(onClick = { vm.paySalaries(store) }) { Text("给所有班干发工资") }
+        Text("每人每职位叠加发放，工资进金币。", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun ExamPanel(vm: MoreViewModel) {
+    val exams = vm.data?.optJSONObject("examScores")
+    Column(Modifier.verticalScroll(rememberScrollState())) {
+        if (exams == null || exams.length() == 0) { Text("（还没有考试记录）"); return@Column }
+        val scores = vm.data?.optJSONObject("scores")
+        val keys = exams.keys()
+        while (keys.hasNext()) {
+            val sid = keys.next()
+            val arr = exams.optJSONArray(sid) ?: continue
+            val r = scores?.opt(sid)
+            val name = if (r is JSONArray) r.optString(0) else ""
+            Text("学号 $sid $name", fontWeight = FontWeight.Medium)
+            for (i in 0 until arr.length()) {
+                val e = arr.optJSONObject(i) ?: continue
+                val full = e.optDouble("full", 0.0)
+                val sc = e.optDouble("score", 0.0)
+                ListItem(
+                    headlineContent = { Text("${e.optString("subject")} · ${e.optString("name")}") },
+                    supportingContent = { Text(e.optString("date"), style = MaterialTheme.typography.bodySmall) },
+                    trailingContent = { Text("%.0f/%.0f (%.0f%%)".format(sc, full, if (full > 0) sc / full * 100 else 0.0)) }
+                )
+                HorizontalDivider()
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReportPanel(vm: MoreViewModel) {
+    val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+    val dr = vm.data?.optJSONObject("dailyReport")?.optJSONObject(today)
+    val scores = scoresOf(vm.data)
+    Column(Modifier.verticalScroll(rememberScrollState())) {
+        ListItem(
+            headlineContent = { Text("今日汇报状态") },
+            trailingContent = { Text(if (dr?.optBoolean("allReported") == true) "✅ 已全部汇报" else "⭕ 未完成") }
+        )
+        HorizontalDivider()
+        ListItem(headlineContent = { Text("最后汇报时间") },
+            trailingContent = { Text(dr?.optString("lastReportTime")?.ifEmpty { "-" } ?: "-") })
+        HorizontalDivider()
+        ListItem(headlineContent = { Text("全班人数") }, trailingContent = { Text("${scores.size} 人") })
+        HorizontalDivider()
+        ListItem(headlineContent = { Text("平均分") },
+            trailingContent = { Text("%.1f".format(if (scores.isEmpty()) 0.0 else scores.sumOf { it.third } / scores.size)) })
+        Text("汇报的登记/批量加分为管理员权限，移动端先给只读视图。",
+            style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+@Composable
+private fun BackupPanel(vm: MoreViewModel) {
+    val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+    val json = vm.data?.toString() ?: ""
+    Column(Modifier.verticalScroll(rememberScrollState())) {
+        Text("整班数据 ${json.length} 字节", fontWeight = FontWeight.Medium)
+        Text("导出就是把 GET /api/class/{id} 的 data 原样保存，和网页「导出数据」一致。",
+            style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(8.dp))
+        Button(enabled = json.isNotEmpty(), onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(json)) }) {
+            Text("复制整班 JSON 到剪贴板")
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(json.take(600) + if (json.length > 600) "…" else "", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun AccountPanel(store: Store) {
+    Column(Modifier.verticalScroll(rememberScrollState())) {
+        ListItem(headlineContent = { Text("服务器") }, trailingContent = { Text(store.server) })
+        HorizontalDivider()
+        ListItem(headlineContent = { Text("班级") }, trailingContent = { Text(store.classId) })
+        HorizontalDivider()
+        ListItem(headlineContent = { Text("密码") },
+            trailingContent = { Text(if (store.password.isEmpty()) "未设置" else "已设置") })
+        HorizontalDivider()
+        Text("要改这些去「配置」页；账号权限（root/admin/user）由网页端角色决定，移动端不单独维护。",
+            style = MaterialTheme.typography.bodySmall)
     }
 }

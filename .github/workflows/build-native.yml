@@ -1,0 +1,157 @@
+name: build-native
+
+# 原生客户端 CI：CLI / Qt(Windows 与 Linux) / Android / Swift(macOS+iOS) 编译，
+# 产物统一挂到 native-latest Release（跟 hw-latest / cpp-latest / rust-latest 一个套路）。
+on:
+  push:
+    branches: [native-clients]
+    paths:
+      - "clients/**"
+      - ".github/workflows/build-native.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cli:
+    name: CLI (linux-cli)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 依赖
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
+      - name: 编译
+        working-directory: clients/linux-cli
+        run: make
+      - name: 打包
+        run: |
+          mkdir -p dist
+          cp clients/linux-cli/openstu-cli dist/
+          tar -C dist -czf openstu-cli-linux-x86_64.tar.gz openstu-cli
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openstu-cli-linux-x86_64
+          path: openstu-cli-linux-x86_64.tar.gz
+
+  qt:
+    name: Qt (Linux / KDE)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 依赖
+        run: sudo apt-get update && sudo apt-get install -y qt6-base-dev cmake build-essential
+      - name: 编译 Qt6 Widgets 版
+        run: |
+          cmake -S clients/qt-windows -B build-qt -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-qt -j"$(nproc)"
+      - name: 编译 KDE 版
+        run: |
+          cmake -S clients/linux-kde -B build-kde -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-kde -j"$(nproc)"
+      - name: 打包
+        run: |
+          mkdir -p dist
+          cp build-qt/openstu-desktop dist/ 2>/dev/null || true
+          cp build-kde/openstu-kde dist/ 2>/dev/null || true
+          tar -C dist -czf openstu-desktop-linux-x86_64.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openstu-desktop-linux-x86_64
+          path: openstu-desktop-linux-x86_64.tar.gz
+
+  android:
+    name: Android (APK)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: 安装 SDK 平台
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+      - uses: gradle/actions/setup-gradle@v3
+      - name: 编译 Debug APK
+        working-directory: clients/android
+        run: gradle :app:assembleDebug --no-daemon
+      - name: 打包
+        run: |
+          mkdir -p dist
+          find clients/android -name "*.apk" -exec cp {} dist/openstu-android.apk \;
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openstu-android-apk
+          path: dist/openstu-android.apk
+
+  # Swift：macOS runner 上跑 macOS 版（能直接产出 .app）；
+  # iOS 版不带签名（CODE_SIGNING_ALLOWED=NO），只作为编译验证。
+  swift-macos:
+    name: Swift (macOS)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: 安装 xcodegen
+        run: brew install xcodegen
+      - name: 生成工程
+        working-directory: clients/swift
+        run: xcodegen generate
+      - name: 编译 macOS 版
+        working-directory: clients/swift
+        run: |
+          xcodebuild -project OpenStu.xcodeproj -scheme OpenStuMac -configuration Release \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+      - name: 打包
+        run: |
+          mkdir -p dist
+          ditto -c -k --sequesterRsrc --keepParent clients/swift/build/Build/Products/Release/OpenStu.app dist/OpenStu-macOS.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openstu-swift-macos
+          path: dist/OpenStu-macOS.zip
+
+  swift-ios:
+    name: Swift (iOS 编译验证)
+    runs-on: macos-14
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - working-directory: clients/swift
+        run: xcodegen generate
+      - name: 编译 iOS 版（不签名）
+        working-directory: clients/swift
+        run: |
+          xcodebuild -project OpenStu.xcodeproj -scheme OpenStuIOS -sdk iphoneos -configuration Release \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+
+  harmony:
+    name: Harmony（本机无 DevEco，跳过）
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "鸿蒙工程需要 DevEco Studio / hvigor 私有工具链，公开 runner 装不了，这里只保证源码在仓库里。"
+
+  release:
+    name: 发布到 native-latest
+    needs: [cli, qt, android, swift-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: 汇总
+        run: |
+          mkdir -p out
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.apk" -o -name "*.zip" \) -exec cp {} out/ \;
+          ls -lh out
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: native-latest
+          name: "OpenStu 原生客户端（最新构建）"
+          body: |
+            自动构建产物：CLI（Linux x86_64）、Qt（Linux x86_64）、Android Debug APK、macOS .app。
+            iOS 版在 CI 里只做编译验证，不产出可安装包（需要你自己的证书）。
+          files: out/*
+          make_latest: false
