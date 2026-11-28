@@ -159,6 +159,18 @@ jobs:
         run: |
           xcodebuild -project OpenStu.xcodeproj -scheme OpenStuIOS -sdk iphoneos -configuration Release \
             -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+      - name: 打成 unsigned IPA（侧载工具可重签安装）
+        run: |
+          mkdir -p dist/Payload
+          cp -R clients/swift/build/Build/Products/Release-iphoneos/OpenStu.app dist/Payload/
+          cd dist && zip -qry OpenStu-unsigned.ipa Payload
+          ls -lh OpenStu-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: openstu-ios-unsigned
+          path: dist/OpenStu-unsigned.ipa
+          if-no-files-found: ignore
 
   harmony:
     name: Harmony（本机无 DevEco，跳过）
@@ -168,7 +180,7 @@ jobs:
 
   release:
     name: 发布到 native-latest
-    needs: [cli, python-cli, qt, android, swift-macos]
+    needs: [cli, python-cli, qt, android, swift-macos, swift-ios]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
