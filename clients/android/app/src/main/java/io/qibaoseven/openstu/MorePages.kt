@@ -716,12 +716,20 @@ private fun JournalPanel(store: Store, roster: List<Student>) {
 @Composable
 private fun LogsPanel(vm: MoreViewModel) {
     val logs = vm.data?.optJSONArray("logs")
+    var filter by remember { mutableStateOf("") }
+    var shown = 0
     Column(Modifier.verticalScroll(rememberScrollState())) {
+        OutlinedTextField(filter, { filter = it }, label = { Text("筛选：学生 / 操作 / 原因") },
+            singleLine = true, modifier = Modifier.fillMaxWidth())
         if (logs == null || logs.length() == 0) {
             Text("（暂无日志）")
         } else {
-            for (i in 0 until minOf(logs.length(), 60)) {
+            for (i in 0 until logs.length()) {
+                if (shown >= 60) break
                 val l = logs.optJSONObject(i) ?: continue
+                val hay = "${l.optString("action")} ${l.optString("student_name")} ${l.optString("student_id")} ${l.optString("reason")}"
+                if (filter.isNotBlank() && !hay.contains(filter, ignoreCase = true)) continue
+                shown++
                 ListItem(
                     headlineContent = { Text("${l.optString("action")} · ${l.optString("student_name")}") },
                     supportingContent = {
