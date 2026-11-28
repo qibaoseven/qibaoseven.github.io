@@ -170,6 +170,8 @@ struct Client {
     }
 };
 
+#include "classcmd.hpp"
+
 // ============================ 展示 ============================
 static void printProgress(int done, int total) {
     int width = 30;
@@ -256,6 +258,23 @@ static void usage() {
         "  openstu-cli submit <学号> --subject N [--type N] [--date D]    登记已交\n"
         "  openstu-cli watch [--interval 3]                              持续刷新进度\n"
         "  openstu-cli whoami                                            打印当前配置（不显示密码）\n\n"
+        "班级数据 / 分数 / 金币（对应网页端「控制台 / 分数管理 / 金币系统 / 排名」）:\n"
+        "  openstu-cli classinfo                                         班级概览（人数/均分/金币/分组/日志数）\n"
+        "  openstu-cli scores [--top 10] [--gold]                         分数或金币排行\n"
+        "  openstu-cli score <学号> +2 [--reason 说明]                    加/减分（写日志）\n"
+        "  openstu-cli gold  <学号> +50 [--reason 说明]                   加/减金币\n"
+        "  openstu-cli gacha <学号> [--times 10]                         抽奖（周五 12:00 后开放，160/1600 金币）\n\n"
+        "学生历程 / 日志 / 分组（对应「学生历程 / 操作日志 / 分组管理」）:\n"
+        "  openstu-cli journal <学号>                                    读历程\n"
+        "  openstu-cli journal-add <学号> \"内容\" [--operator 姓名]       追加历程\n"
+        "  openstu-cli journal-export                                    导出全班历程纯文本\n"
+        "  openstu-cli logs [--n 30]                                      最近操作日志\n"
+        "  openstu-cli groups                                            分组与组均分\n\n"
+        "作业初始化 / 种类 / 绑卡（对应「作业初始化 / 硬件登记」）:\n"
+        "  openstu-cli init --students 51 --subjects 语文,数学 [--start 2026-09-01]\n"
+        "  openstu-cli types                                             已配置的作业种类\n"
+        "  openstu-cli uid 12:34:56:78:9A:BC:DE 23 [--subject 0] [--type 1]\n"
+        "  openstu-cli uids                                              全班卡号字典\n\n"
         "选项:\n"
         "  --subject 用索引（0 起），也可 --subject-name 语文\n"
         "  --type    作业种类索引（配了种类才有意义）\n"
@@ -310,9 +329,14 @@ int main(int argc, char** argv) {
             return 0;
         }
 
-        if (!cfg.classId.empty() && !cfg.password.empty() && (cmd == "status" || cmd == "list" || cmd == "submit" || cmd == "watch")) {
+        const bool needCfg = cmd == "status" || cmd == "list" || cmd == "submit" || cmd == "watch" ||
+                             cmd == "classinfo" || cmd == "scores" || cmd == "score" || cmd == "gold" ||
+                             cmd == "gacha" || cmd == "journal" || cmd == "journal-add" || cmd == "journal-export" ||
+                             cmd == "logs" || cmd == "groups" || cmd == "types" || cmd == "init" ||
+                             cmd == "uid" || cmd == "uids";
+        if (!cfg.classId.empty() && !cfg.password.empty() && needCfg) {
             // 正常分支
-        } else if (cmd == "status" || cmd == "list" || cmd == "submit" || cmd == "watch") {
+        } else if (needCfg) {
             die("还没配好，先跑: openstu-cli config --server ... --class ... --password ...");
         }
 
@@ -388,6 +412,81 @@ int main(int argc, char** argv) {
                 std::this_thread::sleep_for(std::chrono::seconds(interval));
             }
         }
+
+        if (cmd == "classinfo") return extra::cmdClassInfo(c);
+        if (cmd == "scores") {
+            std::vector<std::string> pos;
+            auto f = parseFlags(argc, argv, pos);
+            int top = f.count("top") ? atoi(f["top"].c_str()) : 0;
+            return extra::cmdScores(c, top, f.count("gold") > 0);
+        }
+        if (cmd == "score") {
+            std::vector<std::string> pos;
+            auto f = parseFlags(argc, argv, pos);
+            if (pos.size() < 2) die("用法: score <学号> <变化，如 +2 / -1.5> [--reason 说明]");
+            int sid = atoi(pos[0].c_str());
+            double delta = atof(pos[1].c_str());
+            return extra::cmdScore(c, sid, delta, f.count("reason") ? f["reason"] : "");
+        }
+        if (cmd == "gold") {
+            std::vector<std::string> pos;
+            auto f = parseFlags(argc, argv, pos);
+            if (pos.size() < 2) die("用法: gold <学号> <变化> [--reason 说明]");
+            return extra::cmdGold(c, atoi(pos[0].c_str()), atof(pos[1].c_str()), f.count("reason") ? f["reason"] : "");
+        }
+        if (cmd == "gacha") {
+            std::vector<std::string> pos;
+            auto f = parseFlags(argc, argv, pos);
+            if (pos.empty()) die("用法: gacha <学号> [--times 10]");
+            return extra::cmdGacha(c, atoi(pos[0].c_str()), f.count("times") ? atoi(f["times"].c_str()) : 1);
+        }
+        if (cmd == "journal") {
+            std::vector<std::string> pos;
+            auto f = parseFlags(argc, argv, pos);
+            if (pos.empty()) die("用法: journal <学号>");
+            return extra::cmdJournal(c, atoi(pos[0].c_str()));
+        }
+        if (cmd == "journal-add") {
+            std::vector<std::string> pos;
+            auto f = parseFlags(argc, argv, pos);
+            if (pos.size() < 2) die("用法: journal-add <学号> \"内容\" [--operator 李老师]");
+            return extra::cmdJournalAdd(c, atoi(pos[0].c_str()), pos[1], f.count("operator") ? f["operator"] : "");
+        }
+        if (cmd == "journal-export") return extra::cmdJournalExport(c);
+        if (cmd == "logs") {
+            std::vector<std::string> pos;
+            auto f = parseFlags(argc, argv, pos);
+            return extra::cmdLogs(c, f.count("n") ? atoi(f["n"].c_str()) : 30);
+        }
+        if (cmd == "groups") return extra::cmdGroups(c);
+        if (cmd == "types") return extra::cmdTypes(c);
+        if (cmd == "init") {
+            std::vector<std::string> pos;
+            auto f = parseFlags(argc, argv, pos);
+            int students = f.count("students") ? atoi(f["students"].c_str()) : 0;
+            if (students <= 0) die("用法: init --students 51 --subjects 语文,数学 [--start 2026-09-01]");
+            std::vector<std::string> subs;
+            if (f.count("subjects")) {
+                std::string cur;
+                for (char ch : f["subjects"]) {
+                    if (ch == ',') { if (!cur.empty()) subs.push_back(cur); cur.clear(); }
+                    else cur += ch;
+                }
+                if (!cur.empty()) subs.push_back(cur);
+            }
+            if (subs.empty()) die("--subjects 至少要有一个科目，如 语文,数学");
+            return extra::cmdInit(c, students, subs, f.count("start") ? f["start"] : "");
+        }
+        if (cmd == "uid") {
+            std::vector<std::string> pos;
+            auto f = parseFlags(argc, argv, pos);
+            if (pos.size() < 2) die("用法: uid <UID> <学号> [--subject 0] [--type 1] [--date YYYY-MM-DD]");
+            return extra::cmdBindUid(c, pos[0], atoi(pos[1].c_str()),
+                                     f.count("subject") ? atoi(f["subject"].c_str()) : -1,
+                                     f.count("type") ? atoi(f["type"].c_str()) : -1,
+                                     f.count("date") ? f["date"] : "");
+        }
+        if (cmd == "uids") return extra::cmdUids(c);
 
         usage();
         return 0;
